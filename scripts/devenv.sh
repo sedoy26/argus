@@ -26,8 +26,13 @@ if [ -d "$HOME/.bun/bin" ] && ! command -v bun >/dev/null 2>&1; then
   echo "[devenv] bun → $HOME/.bun/bin"
 fi
 
+if [ -d "$HOME/.foundry/bin" ] && ! command -v forge >/dev/null 2>&1; then
+  export PATH="$HOME/.foundry/bin:$PATH"
+  echo "[devenv] foundry → $HOME/.foundry/bin"
+fi
+
 # Sanity report.
-for cmd in docker arm-none-eabi-ld cargo rustup bun nc make; do
+for cmd in docker arm-none-eabi-ld cargo rustup bun forge cast nc make; do
   if command -v "$cmd" >/dev/null 2>&1; then
     printf "[devenv] %-20s %s\n" "$cmd" "$(command -v $cmd)"
   else
