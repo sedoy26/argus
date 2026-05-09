@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-argus-bg: oklch(15% 0.01 270);
+  --color-argus-card: oklch(20% 0.015 270);
+  --color-argus-border: oklch(30% 0.02 270);
+  --color-argus-muted: oklch(60% 0.015 270);
+  --color-argus-text: oklch(95% 0.005 270);
+
+  --color-score-none: oklch(35% 0.01 270);
+  --color-score-yellow: oklch(75% 0.18 90);
+  --color-score-orange: oklch(70% 0.2 50);
+  --color-score-red: oklch(60% 0.25 25);
+  --color-score-critical: oklch(55% 0.28 0);
+}
+
+body {
+  font-family: ui-sans-serif, -apple-system, system-ui, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+code,
+.mono {
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
+}
