@@ -24,10 +24,13 @@ export interface GuardianConfig {
   /** ERC-20 tokens to revoke. We currently revoke each protected
    *  wallet's approval to `spender` on every token in this list. */
   tokens: Address[];
-  /** Wallets whose approvals we guard. Each must be controllable by
-   *  the configured signer (i.e. `signer.address` matches the wallet
-   *  address) — for the demo we hold their private keys directly. */
+  /** Wallets whose approvals we guard. */
   protected: ProtectedWallet[];
+  /** Per-wallet signer overrides. If a wallet address is present here
+   *  its signer is used instead of the default signer. This lets the
+   *  demo show multiple wallets protected by individual keys while the
+   *  primary KMS signer covers the guardian's own address. */
+  signerMap?: Map<string, Signer>;
   /** Score level at which the guardian acts. Default: CRITICAL. */
   threshold: Score;
   /** Poll cadence in milliseconds. Default: 5000. */
@@ -103,15 +106,18 @@ export class Guardian {
   }
 
   /** Revoke each protected-wallet's approval to spender across every
-   *  guarded token. Skips wallets that don't match the signer's
-   *  address — the demo ships a single signer, but the design allows
-   *  pluggable per-wallet signers later. */
+   *  guarded token. Uses the per-wallet signer from `signerMap` if
+   *  present, otherwise falls back to the default (KMS) signer. */
   async revokeAll(score: Score): Promise<ActionLog[]> {
     const out: ActionLog[] = [];
     for (const wallet of this.config.protected) {
-      if (wallet.address.toLowerCase() !== this.signer.address.toLowerCase()) {
+      const walletSigner =
+        this.config.signerMap?.get(wallet.address.toLowerCase()) ??
+        this.signer;
+
+      if (walletSigner.address.toLowerCase() !== wallet.address.toLowerCase()) {
         console.warn(
-          `[guardian] skipping ${wallet.label} (${wallet.address}); signer controls ${this.signer.address}`,
+          `[guardian] skipping ${wallet.label} (${wallet.address}); no matching signer`,
         );
         continue;
       }
@@ -119,7 +125,7 @@ export class Guardian {
         try {
           const { hash } = await revokeApproval({
             client: this.client,
-            signer: this.signer,
+            signer: walletSigner,
             token,
             spender: this.config.spender,
           });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getBoot,
+  getEvents,
   getHealth,
   getPreview,
   getRisk,
@@ -8,8 +9,10 @@ import {
   type SubmitSignalArgs,
 } from './api';
 import type {
+  ArgusEvent,
   BootInfo,
   ConsensusEnvelope,
+  EventKind,
   GatewayPreview,
   HealthInfo,
   Score,
@@ -20,9 +23,10 @@ import type {
 // ---------------------------------------------------------------------------
 
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
-const WATCHED_KEY = 'argus.watched.v1';
+const WATCHED_KEY = 'argus.watched.v2';
+// FakeSwapNet deployed on Sepolia (the "vulnerable" demo protocol)
 const DEFAULT_WATCHED: string[] = [
-  '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+  '0x3b38fe80891ec608829e941ef965e1c96d3460d6',
 ];
 
 function loadWatched(): string[] {
@@ -457,7 +461,7 @@ function SubmitForm({
   const [open, setOpen] = useState(false);
   const [args, setArgs] = useState<SubmitSignalArgs>({
     contractAddress: defaultAddr ?? '',
-    chainId: 31337,
+    chainId: 11155111,
     threatType: 'SWAT-001',
     verdict: 'CONFIRMED',
     evidence: { source: 'manual', note: 'submitted from dashboard' },
@@ -615,6 +619,167 @@ function Select({
 }
 
 // ---------------------------------------------------------------------------
+// event feed
+// ---------------------------------------------------------------------------
+
+const KIND_ICON: Record<EventKind, string> = {
+  signal_received: '📡',
+  score_changed: '📊',
+  guardian_trigger: '🛡️',
+  boot: '🔧',
+  info: 'ℹ️',
+};
+
+const KIND_COLOR: Record<EventKind, string> = {
+  signal_received: 'text-sky-300 border-sky-500/30 bg-sky-500/10',
+  score_changed: 'text-amber-300 border-amber-500/30 bg-amber-500/10',
+  guardian_trigger: 'text-rose-300 border-rose-500/40 bg-rose-500/15',
+  boot: 'text-zinc-400 border-zinc-600/30 bg-zinc-700/20',
+  info: 'text-zinc-400 border-zinc-600/30 bg-zinc-700/10',
+};
+
+const SCORE_PILL: Record<string, string> = {
+  NONE: 'bg-zinc-700 text-zinc-300',
+  YELLOW: 'bg-amber-400/80 text-zinc-900',
+  ORANGE: 'bg-orange-400/80 text-zinc-900',
+  RED: 'bg-rose-500/80 text-white',
+  CRITICAL: 'bg-red-600 text-white animate-pulse',
+};
+
+function EventRow({ ev }: { ev: ArgusEvent }) {
+  const color = KIND_COLOR[ev.kind];
+  const icon = KIND_ICON[ev.kind];
+  const time = new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const d = ev.detail;
+
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 text-xs ${color} transition-all`}>
+      <div className="flex items-start gap-2">
+        <span className="text-base leading-none mt-0.5 shrink-0">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="font-medium break-all leading-snug">{ev.message}</span>
+            <span className="shrink-0 text-[10px] opacity-60 mono">{time}</span>
+          </div>
+
+          {/* per-kind detail */}
+          {ev.kind === 'signal_received' && (
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 opacity-80">
+              <span className="mono opacity-70">{String(d.submitter ?? '')}</span>
+              {d.score && (
+                <span className={`inline-block rounded px-1.5 py-0 text-[10px] font-bold ${SCORE_PILL[String(d.score)] ?? 'bg-zinc-700'}`}>
+                  {String(d.score)}
+                </span>
+              )}
+              <span className="opacity-60">rep:{String(d.reputation ?? '?')}</span>
+            </div>
+          )}
+
+          {ev.kind === 'score_changed' && (
+            <div className="mt-1 flex items-center gap-2 flex-wrap opacity-80">
+              <span className={`inline-block rounded px-1.5 py-0 text-[10px] font-bold ${SCORE_PILL[String(d.prev)] ?? 'bg-zinc-700'}`}>
+                {String(d.prev ?? 'NONE')}
+              </span>
+              <span className="opacity-50">→</span>
+              <span className={`inline-block rounded px-1.5 py-0 text-[10px] font-bold ${SCORE_PILL[String(d.score)] ?? 'bg-zinc-700'}`}>
+                {String(d.score)}
+              </span>
+              <span className="opacity-60 mono text-[10px]">attest:{String(d.attestation ?? '').slice(0, 12)}…</span>
+            </div>
+          )}
+
+          {ev.kind === 'guardian_trigger' && (
+            <div className="mt-1 opacity-80 font-semibold">
+              revoking all approvals for{' '}
+              <span className="mono">{String(d.address ?? '').slice(0, 10)}…</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function useEvents() {
+  const [events, setEvents] = useState<ArgusEvent[]>([]);
+  const latestId = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      while (active) {
+        try {
+          const evs = await getEvents(latestId.current > 0 ? latestId.current : undefined);
+          if (evs.length > 0) {
+            latestId.current = evs[evs.length - 1]!.id;
+            setEvents((prev) => {
+              const existing = new Set(prev.map((e) => e.id));
+              const fresh = evs.filter((e) => !existing.has(e.id));
+              if (fresh.length === 0) return prev;
+              const next = [...prev, ...fresh];
+              // keep last 150
+              return next.length > 150 ? next.slice(-150) : next;
+            });
+          }
+        } catch {
+          /* network blip — retry */
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    };
+    void poll();
+    return () => { active = false; };
+  }, []);
+
+  return events;
+}
+
+function EventFeed({ events }: { events: ArgusEvent[] }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  // Auto-scroll to bottom when new events arrive
+  useEffect(() => {
+    if (autoScroll && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [events, autoScroll]);
+
+  return (
+    <section className="flex flex-col rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/60 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--color-argus-border)">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">
+            live event feed
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-(--color-argus-muted)">
+          <span>{events.length} events</span>
+          <button
+            onClick={() => setAutoScroll((v) => !v)}
+            className={`rounded px-1.5 py-0.5 border ${autoScroll ? 'border-emerald-500/40 text-emerald-400' : 'border-(--color-argus-border)'}`}
+          >
+            {autoScroll ? '⬇ auto' : 'manual'}
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto max-h-[480px] p-3 space-y-2">
+        {events.length === 0 && (
+          <div className="text-xs text-(--color-argus-muted) text-center py-8">
+            waiting for events… submit a signal or run the demo script
+          </div>
+        )}
+        {events.map((ev) => (
+          <EventRow key={ev.id} ev={ev} />
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // app
 // ---------------------------------------------------------------------------
 
@@ -624,6 +789,7 @@ export function App() {
   const { data: health } = usePoll(getHealth, 5_000, []);
   const { data: boot } = usePoll(getBoot, 5_000, []);
   const { risks, refetchAll } = useRisks(watched);
+  const events = useEvents();
 
   useEffect(() => saveWatched(watched), [watched]);
 
@@ -683,6 +849,7 @@ export function App() {
           )}
         </aside>
         <section className="space-y-6">
+          <EventFeed events={events} />
           {cards.length === 0 && (
             <div className="text-sm text-(--color-argus-muted)">
               add an address to start watching.

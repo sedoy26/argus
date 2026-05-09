@@ -1,7 +1,7 @@
 // Pluggable feed strategy for the scout.
 //
-// In production we hit Apify Actors via an X402-paid request. For the
-// smoke we hand the scout a fixed set of "tweets" so it can run
+// In production we hit Apify Actors via an X402-paid request (USDC on Base).
+// For smoke tests we hand the scout a fixed set of "tweets" so it can run
 // hermetically.
 //
 // Each feed item is the raw text we'll mine for addresses + vuln
@@ -47,14 +47,15 @@ export interface ApifyFeedOptions {
   actorId: string;
   /** Body POSTed to the run-sync-get-dataset endpoint. */
   runInput: Record<string, unknown>;
-  /** Standard Apify token auth — works today. Use this OR x402. */
+  /** Standard Apify bearer token. Use this OR x402PrivateKey. */
   apifyToken?: string;
-  /** Pre-built X402 payment header. Apify's X402 integration accepts
-   *  one of these in lieu of a token; we expect the caller to mint
-   *  it (ideally inside the TEE) since the on-chain payment is the
-   *  per-request bill.
-   *  Docs: https://docs.apify.com/platform/integrations/x402 */
-  x402PaymentHeader?: string;
+  /**
+   * X402 payment path: hex private key of a wallet funded with USDC on
+   * Base mainnet (0x833589… contract). The feed will do the full
+   * 402 → sign → retry handshake automatically.
+   * Docs: https://docs.apify.com/platform/integrations/x402
+   */
+  x402PrivateKey?: `0x${string}`;
   /** Field on the dataset record holding the post text. */
   textField?: string;
   /** Field on the dataset record holding the post id. */
@@ -70,36 +71,32 @@ export interface ApifyFeedOptions {
 export class ApifyFeed implements FeedClient {
   private readonly base: string;
   constructor(private readonly opts: ApifyFeedOptions) {
-    if (!opts.apifyToken && !opts.x402PaymentHeader) {
-      throw new Error('ApifyFeed: provide apifyToken or x402PaymentHeader');
+    if (!opts.apifyToken && !opts.x402PrivateKey) {
+      throw new Error('ApifyFeed: provide apifyToken or x402PrivateKey');
     }
     this.base = opts.baseUrl ?? 'https://api.apify.com/v2';
   }
 
   async fetchLatest(): Promise<FeedItem[]> {
-    const url =
-      `${this.base}/acts/${encodeURIComponent(this.opts.actorId)}` +
-      `/run-sync-get-dataset-items?clean=1`;
+    // Apify actor ID format: "owner/name" → URL uses "owner~name"
+    const actorSlug = this.opts.actorId.replace('/', '~');
+    const url = `${this.base}/acts/${actorSlug}/run-sync-get-dataset-items?clean=1`;
     const headers: Record<string, string> = {
       'content-type': 'application/json',
     };
     if (this.opts.apifyToken) {
       headers['authorization'] = `Bearer ${this.opts.apifyToken}`;
     }
-    if (this.opts.x402PaymentHeader) {
-      headers['Payment'] = this.opts.x402PaymentHeader;
+
+    let r: Response;
+    if (this.opts.x402PrivateKey) {
+      // Full X402 handshake: 402 → sign → retry with PAYMENT-SIGNATURE
+      const { fetchWithX402 } = await import('./x402.ts');
+      r = await fetchWithX402(url, { method: 'POST', headers, body: JSON.stringify(this.opts.runInput) }, this.opts.x402PrivateKey);
+    } else {
+      r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(this.opts.runInput) });
     }
-    const r = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(this.opts.runInput),
-    });
-    if (r.status === 402) {
-      const challenge = await r.text();
-      throw new Error(
-        `Apify returned 402 (X402 payment required). Mint a payment header per the challenge body: ${challenge.slice(0, 200)}`,
-      );
-    }
+
     if (!r.ok) {
       throw new Error(`Apify ${r.status}: ${(await r.text()).slice(0, 200)}`);
     }

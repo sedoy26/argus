@@ -1,16 +1,23 @@
 // Mine raw post text for (contract address, threat-keyword) pairs.
 //
-// Heuristics, not parsing — keep this layer narrow on purpose so a
-// noisy feed doesn't silently flip a contract to CRITICAL on a stray
-// keyword. The signal-api / applet weighs us against other watchers
-// anyway, so we lean toward false negatives over false positives.
+// Two extraction modes:
+//
+//  1. Address extraction (0x... + keyword) — the original mode.
+//     Returns Extraction[] with a resolved EVM address.
+//
+//  2. Project mention extraction (@handle or $TOKEN + keyword).
+//     Returns ProjectMention[] — the caller must resolve the handle
+//     to a contract address via the project registry (resolver.ts).
+//
+// Heuristics, not parsing — lean toward false negatives over false
+// positives; the signal-api / applet weighs us anyway.
 
 export type ThreatType = 'SWAT-001' | 'SWAT-002' | 'SWAT-005';
 
 export interface Extraction {
   address: string;
   threatType: ThreatType;
-  /** ±100-char window around the address+keyword that triggered. */
+  /** ±120-char window around the address+keyword that triggered. */
   context: string;
   /** Keyword that fired. */
   keyword: string;
@@ -18,7 +25,21 @@ export interface Extraction {
   reputation: number;
 }
 
+/** A threat associated with a @handle or $TOKEN rather than a raw address. */
+export interface ProjectMention {
+  /** Lower-cased handle without the @ or $ sigil, e.g. "fakeswapnet" */
+  handle: string;
+  /** Original token as it appeared in the tweet, e.g. "@FakeSwapNet" */
+  raw: string;
+  threatType: ThreatType;
+  context: string;
+  keyword: string;
+  reputation: number;
+}
+
 const ADDR_RE = /(0x[0-9a-fA-F]{40})\b/g;
+// Matches @Handle or $TOKEN (2-30 chars, alphanumeric + underscore)
+const MENTION_RE = /[@$]([A-Za-z][A-Za-z0-9_]{1,29})\b/g;
 
 interface KeywordRule {
   threat: ThreatType;
@@ -64,6 +85,7 @@ const RULES: KeywordRule[] = [
 /** Generic "this is a real exploit" signal that bumps reputation. */
 const URGENCY_BONUS = ['exploit', 'vulnerability', 'attacker', 'hack', 'cve'];
 
+/** Extract (address, threat) pairs from post text. */
 export function extract(text: string): Extraction[] {
   const out: Extraction[] = [];
   const lower = text.toLowerCase();
@@ -82,13 +104,37 @@ export function extract(text: string): Extraction[] {
       let rep = rule.reputation;
       if (URGENCY_BONUS.some((w) => lower.includes(w))) rep += 10;
       if (rep > 95) rep = 95;
-      out.push({
-        address: addr,
-        threatType: rule.threat,
-        keyword: kw,
-        context: ctx,
-        reputation: rep,
-      });
+      out.push({ address: addr, threatType: rule.threat, keyword: kw, context: ctx, reputation: rep });
+    }
+  }
+  return out;
+}
+
+/**
+ * Extract project mentions (@Handle or $TOKEN) paired with threat keywords.
+ * Used when a post references a protocol by name/handle instead of 0x address.
+ * The caller resolves the handle to a contract address via the project registry.
+ */
+export function extractMentions(text: string): ProjectMention[] {
+  const out: ProjectMention[] = [];
+  const lower = text.toLowerCase();
+  const seen = new Set<string>();
+  for (const m of text.matchAll(MENTION_RE)) {
+    const raw = m[0]!;       // e.g. "@FakeSwapNet"
+    const handle = m[1]!.toLowerCase(); // e.g. "fakeswapnet"
+    const idx = m.index!;
+    const ctx = excerpt(text, idx, raw.length);
+    const ctxLower = ctx.toLowerCase();
+    for (const rule of RULES) {
+      const kw = rule.keywords.find((k) => ctxLower.includes(k.toLowerCase()));
+      if (!kw) continue;
+      const dedup = `${handle}:${rule.threat}`;
+      if (seen.has(dedup)) continue;
+      seen.add(dedup);
+      let rep = rule.reputation - 10; // mentions are less certain than explicit addresses
+      if (URGENCY_BONUS.some((w) => lower.includes(w))) rep += 10;
+      if (rep > 85) rep = 85;
+      out.push({ handle, raw, threatType: rule.threat, keyword: kw, context: ctx, reputation: rep });
     }
   }
   return out;

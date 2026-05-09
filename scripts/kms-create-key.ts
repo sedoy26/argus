@@ -21,6 +21,11 @@
 // to the key id only forfeits future signing, never exposes the
 // private material.
 
+// NOTE: the Orbitport SDK 0.2.1 omits Tags from the wire payload unless
+// explicitly provided, but the API requires it (even empty). We bypass the
+// SDK's createKey helper and call the JSON-RPC endpoint directly so we
+// control the full payload.  Auth (OAuth2 client-credentials) still goes
+// through the SDK's auth service.
 import { OrbitportSDK } from '@spacecomputer-io/orbitport-sdk-ts';
 
 const clientId = process.env.ORBITPORT_CLIENT_ID;
@@ -35,18 +40,55 @@ if (!clientId || !clientSecret) {
 const alias =
   process.env.ARGUS_KEY_ALIAS ?? `argus-guardian-${Date.now()}`;
 
-const sdk = new OrbitportSDK({
-  config: { clientId, clientSecret },
-});
-
 console.log('[kms-create-key] alias       ', alias);
 console.log('[kms-create-key] creating key…');
-const key = await sdk.kms.createKey({
-  alias,
-  keySpec: 'ECC_SECG_P256K1',
-  keyUsage: 'SIGN_VERIFY',
-  scheme: 'ETHEREUM',
+
+// Step 1 — obtain OAuth2 bearer token
+const tokenRes = await fetch('https://auth.spacecomputer.io/oauth/token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    client_id: clientId,
+    client_secret: clientSecret,
+    audience: 'https://op.spacecomputer.io/api',
+    grant_type: 'client_credentials',
+  }),
 });
+const tokenBody = await tokenRes.json() as { access_token?: string; error?: string };
+if (!tokenBody.access_token) {
+  throw new Error(`Auth failed: ${JSON.stringify(tokenBody)}`);
+}
+const token = tokenBody.access_token;
+
+// Step 2 — create the ETHEREUM-scheme secp256k1 key
+const rpcRes = await fetch('https://op.spacecomputer.io/api/v1/rpc', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'kms.CreateKey',
+    params: {
+      Alias: alias,
+      KeySpec: 'ECC_SECG_P256K1',
+      KeyUsage: 'SIGN_VERIFY',
+      Scheme: 'ETHEREUM',
+      Description: 'Argus guardian signing key (secp256k1, Ethereum)',
+      Tags: [],
+    },
+  }),
+});
+if (!rpcRes.ok) {
+  throw new Error(`KMS API error ${rpcRes.status}: ${await rpcRes.text()}`);
+}
+const rpcBody = await rpcRes.json() as {
+  result?: { KeyMetadata: { KeyId: string; Address?: string } };
+  error?: unknown;
+};
+if (rpcBody.error || !rpcBody.result) {
+  throw new Error(`KMS RPC error: ${JSON.stringify(rpcBody)}`);
+}
+const key = { data: rpcBody.result };
 
 const keyId = key.data.KeyMetadata.KeyId;
 const address = key.data.KeyMetadata.Address;

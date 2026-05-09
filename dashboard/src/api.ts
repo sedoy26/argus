@@ -3,6 +3,7 @@
 //   /gw  → ens-resolver gateway
 
 import type {
+  ArgusEvent,
   BootInfo,
   ConsensusEnvelope,
   GatewayPreview,
@@ -57,4 +58,9 @@ export async function submitSignal(args: SubmitSignalArgs): Promise<{
       body: JSON.stringify(args),
     }),
   );
+}
+
+export async function getEvents(afterId?: number): Promise<ArgusEvent[]> {
+  const url = afterId ? `/api/events?after=${afterId}` : '/api/events?n=50';
+  return jsonOrThrow<ArgusEvent[]>(await fetch(url));
 }

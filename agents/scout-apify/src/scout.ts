@@ -11,7 +11,8 @@
 import { createHash } from 'node:crypto';
 
 import type { FeedClient, FeedItem } from './feed.ts';
-import { extract, type Extraction } from './extract.ts';
+import { extract, extractMentions, type Extraction, type ProjectMention } from './extract.ts';
+import { resolveProject } from './resolver.ts';
 
 export interface ScoutConfig {
   feed: FeedClient;
@@ -77,15 +78,46 @@ export class Scout {
   }
 
   private async processItem(item: FeedItem): Promise<SubmissionResult[]> {
-    const extractions = extract(item.text);
-    if (extractions.length === 0) return [];
     const out: SubmissionResult[] = [];
+
+    // ── Path 1: explicit 0x addresses in text ─────────────────────────────
+    const extractions = extract(item.text);
     for (const e of extractions) {
       const seenKey = `${item.id}:${e.address}:${e.threatType}`;
       if (this.seen.has(seenKey)) continue;
       this.seen.add(seenKey);
       out.push(await this.submit(item, e));
     }
+
+    // ── Path 2: @handle / $TOKEN mentions — resolve via project registry ──
+    // Only run if no explicit addresses were found, to avoid double-signals.
+    if (extractions.length === 0) {
+      const mentions = extractMentions(item.text);
+      for (const m of mentions) {
+        const project = await resolveProject(m.handle);
+        if (!project) {
+          console.log(`[scout] unresolved mention ${m.raw} — not in project registry`);
+          continue;
+        }
+        const seenKey = `${item.id}:${project.address}:${m.threatType}`;
+        if (this.seen.has(seenKey)) continue;
+        this.seen.add(seenKey);
+        console.log(`[scout] resolved ${m.raw} → ${project.address} (${project.name})`);
+        const extraction: Extraction = {
+          address: project.address,
+          threatType: m.threatType,
+          keyword: m.keyword,
+          context: m.context,
+          reputation: m.reputation,
+        };
+        // Override chainId with project's chain
+        const savedChain = this.config.chainId;
+        (this.config as { chainId: number }).chainId = project.chainId;
+        out.push(await this.submit(item, extraction));
+        (this.config as { chainId: number }).chainId = savedChain;
+      }
+    }
+
     return out;
   }
 

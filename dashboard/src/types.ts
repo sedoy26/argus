@@ -36,3 +36,18 @@ export interface GatewayPreview {
   records: Record<string, string>;
   envelope?: ConsensusEnvelope;
 }
+
+export type EventKind =
+  | 'signal_received'
+  | 'score_changed'
+  | 'guardian_trigger'
+  | 'boot'
+  | 'info';
+
+export interface ArgusEvent {
+  id: number;
+  ts: number;
+  kind: EventKind;
+  message: string;
+  detail: Record<string, unknown>;
+}

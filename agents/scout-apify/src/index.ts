@@ -12,10 +12,11 @@ function envOrThrow(name: string): string {
 async function main(): Promise<void> {
   const actorId = envOrThrow('APIFY_ACTOR_ID');
   const apifyToken = Bun.env.APIFY_TOKEN;
-  const x402PaymentHeader = Bun.env.APIFY_X402_PAYMENT_HEADER;
-  if (!apifyToken && !x402PaymentHeader) {
+  // X402: hex private key of a USDC-on-Base-funded wallet
+  const x402PrivateKey = Bun.env.APIFY_X402_PRIVATE_KEY as `0x${string}` | undefined;
+  if (!apifyToken && !x402PrivateKey) {
     throw new Error(
-      'set APIFY_TOKEN (legacy auth) or APIFY_X402_PAYMENT_HEADER (per-request payment)',
+      'set APIFY_TOKEN (bearer auth) or APIFY_X402_PRIVATE_KEY (x402 payment, USDC on Base)',
     );
   }
   const runInput = JSON.parse(Bun.env.APIFY_RUN_INPUT ?? '{}') as Record<
@@ -27,11 +28,10 @@ async function main(): Promise<void> {
     runInput,
   };
   if (apifyToken) apifyOpts.apifyToken = apifyToken;
-  if (x402PaymentHeader) apifyOpts.x402PaymentHeader = x402PaymentHeader;
+  if (x402PrivateKey) apifyOpts.x402PrivateKey = x402PrivateKey;
   if (Bun.env.APIFY_TEXT_FIELD) apifyOpts.textField = Bun.env.APIFY_TEXT_FIELD;
   if (Bun.env.APIFY_ID_FIELD) apifyOpts.idField = Bun.env.APIFY_ID_FIELD;
-  if (Bun.env.APIFY_AUTHOR_FIELD)
-    apifyOpts.authorField = Bun.env.APIFY_AUTHOR_FIELD;
+  if (Bun.env.APIFY_AUTHOR_FIELD) apifyOpts.authorField = Bun.env.APIFY_AUTHOR_FIELD;
   if (Bun.env.APIFY_TS_FIELD) apifyOpts.timestampField = Bun.env.APIFY_TS_FIELD;
   if (Bun.env.APIFY_BASE_URL) apifyOpts.baseUrl = Bun.env.APIFY_BASE_URL;
 
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   console.log('[scout] submitter   ', config.submitter);
   console.log('[scout] signal-api  ', config.signalApi);
   console.log('[scout] actor       ', actorId);
-  console.log('[scout] auth        ', apifyToken ? 'token' : 'x402');
+  console.log('[scout] auth        ', apifyToken ? 'bearer token' : 'x402 (USDC on Base)');
   console.log('[scout] chainId     ', config.chainId);
   console.log('[scout] verdict     ', config.verdict);
   console.log('[scout] poll        ', config.pollMs, 'ms');

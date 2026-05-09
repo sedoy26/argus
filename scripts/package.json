@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "demo": "bun run demo.ts",
+    "demo-sepolia": "bun run demo-sepolia.ts",
     "set-resolver": "bun run sepolia-set-resolver.ts",
     "verify": "bun run sepolia-verify.ts",
     "kms-create-key": "bun run kms-create-key.ts"

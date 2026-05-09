@@ -3,9 +3,13 @@ pragma solidity ^0.8.27;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {ArgusRiskResolver} from "../src/ArgusRiskResolver.sol";
+import {FakeSwapNet} from "../src/FakeSwapNet.sol";
+import {MockUSDC} from "../src/MockUSDC.sol";
 
-/// @notice Deploy the Argus risk resolver pointing at one or more
-/// CCIP-Read gateway URLs.
+/// @notice Deploy all Argus demo contracts:
+///   - ArgusRiskResolver  (ENS CCIP-Read wildcard resolver)
+///   - FakeSwapNet        (demo vulnerable contract, SWAT-001/002)
+///   - MockUSDC           (demo ERC-20 token)
 ///
 /// Env vars:
 ///   PRIVATE_KEY   - deployer key (0x-hex)
@@ -16,8 +20,7 @@ import {ArgusRiskResolver} from "../src/ArgusRiskResolver.sol";
 /// Usage:
 ///   forge script script/Deploy.s.sol:Deploy \
 ///     --rpc-url $SEPOLIA_RPC_URL \
-///     --broadcast \
-///     --verify
+///     --broadcast
 contract Deploy is Script {
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -33,9 +36,13 @@ contract Deploy is Script {
 
         vm.startBroadcast(pk);
         ArgusRiskResolver resolver = new ArgusRiskResolver(urls, owner);
+        FakeSwapNet fakeSwapNet = new FakeSwapNet();
+        MockUSDC mockUSDC = new MockUSDC();
         vm.stopBroadcast();
 
         console2.log("ArgusRiskResolver deployed at", address(resolver));
+        console2.log("FakeSwapNet        deployed at", address(fakeSwapNet));
+        console2.log("MockUSDC           deployed at", address(mockUSDC));
         console2.log("owner", owner);
         for (uint256 i; i < urls.length; ++i) {
             console2.log("url", urls[i]);

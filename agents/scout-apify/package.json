@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
-    "smoke": "bun run scripts/smoke.ts"
+    "smoke": "bun run scripts/smoke.ts",
+    "demo": "bun run scripts/demo-apify-trigger.ts",
+    "watch": "bun run src/watcher.ts"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

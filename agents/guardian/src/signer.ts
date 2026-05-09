@@ -93,7 +93,7 @@ export class KmsSigner implements Signer {
       // first-class for ETHEREUM keys, and recoverAddress handles the
       // "\x19Ethereum Signed Message" prefix automatically.
       const probe = `argus-guardian-key-recovery-${Date.now()}`;
-      const sigB64 = (
+      const sigRaw = (
         await sdk.kms.sign({
           keyId: opts.keyId,
           message: probe,
@@ -101,7 +101,7 @@ export class KmsSigner implements Signer {
           messageType: 'EIP191',
         })
       ).data.Signature;
-      const sig = bytesToHex(fromBase64ToUint8Array(sigB64));
+      const sig = bytesToHex(decodeSignatureBytes(sigRaw));
       address = await recoverAddress({
         hash: hashEip191(probe),
         signature: sig,
@@ -115,7 +115,7 @@ export class KmsSigner implements Signer {
     const unsigned = serializeTransaction(tx);
     const digest = keccak256(unsigned);
 
-    const sigB64 = (
+    const sigRaw = (
       await this.sdk.kms.sign({
         keyId: this.keyId,
         message: hexToBytes(digest),
@@ -124,7 +124,9 @@ export class KmsSigner implements Signer {
       })
     ).data.Signature;
 
-    const raw = fromBase64ToUint8Array(sigB64);
+    // Orbitport returns a 0x-prefixed hex string, not base64.
+    // Decode whichever format we actually received.
+    const raw = decodeSignatureBytes(sigRaw);
     if (raw.length !== 65) {
       throw new Error(`KMS returned ${raw.length}-byte signature; expected 65`);
     }
@@ -158,6 +160,17 @@ function hashEip191(message: string): Hex {
   buf.set(enc.encode(prefix), 0);
   buf.set(enc.encode(message), prefix.length);
   return keccak256(bytesToHex(buf));
+}
+
+/** Decode a KMS Signature value that may be either:
+ *  - a 0x-prefixed hex string (current Orbitport API behaviour), or
+ *  - a base64 string (older SDK behaviour).
+ * Always returns raw bytes. */
+function decodeSignatureBytes(sig: string): Uint8Array {
+  if (typeof sig === 'string' && sig.startsWith('0x')) {
+    return hexToBytes(sig as Hex);
+  }
+  return fromBase64ToUint8Array(sig);
 }
 
 // ---------------------------------------------------------------------------
