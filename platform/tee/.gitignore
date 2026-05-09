@@ -1,0 +1,33 @@
+# Rust build artifacts
+/target/
+
+# Trusted OS build output
+/bin/
+
+# Embedded applet ELF (copied by Makefile)
+trusted_os/assets/*.elf
+
+# Firmware images
+*.imx
+*.bin
+
+# Object files
+*.o
+*.d
+*.elf
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Bun
+node_modules/
+bun.lock
+bun.lockb

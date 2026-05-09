@@ -1,0 +1,19 @@
+[package]
+name = "trusted_applet"
+version = "0.1.0"
+edition = "2021"
+description = "Rust Trusted Applet for USB Armory MK II (GoTEE)"
+
+# src/main.rs lives at the repo root (user-facing); all other Rust/Go/
+# mkimage scaffolding is kept in docker/ to keep the root clean.
+[[bin]]
+name = "trusted_applet"
+path = "../src/main.rs"
+
+[dependencies]
+gotee_syscall = { path = "gotee_syscall" }
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

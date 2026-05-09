@@ -1,0 +1,12 @@
+[build]
+target = "armv7a-none-eabi"
+# Write cargo artifacts to the repo root's target/ (sibling of docker/),
+# so scripts outside docker/ can refer to the ELF by a stable path
+# (e.g. scripts/upload.ts → target/armv7a-none-eabi/release/trusted_applet).
+target-dir = "../target"
+
+[target.armv7a-none-eabi]
+linker = "arm-none-eabi-ld"
+rustflags = [
+    "-C", "link-arg=-Tapplet.ld",
+]

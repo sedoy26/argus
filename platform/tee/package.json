@@ -1,0 +1,13 @@
+{
+  "name": "gotee-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "upload": "bun run scripts/upload.ts target/armv7a-none-eabi/release/trusted_applet",
+    "test": "bun test",
+    "qemu": "make qemu"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

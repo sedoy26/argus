@@ -1,0 +1,8 @@
+[package]
+name = "gotee_syscall"
+version = "0.1.0"
+edition = "2021"
+description = "Safe Rust wrappers around GoTEE syscalls for Trusted Applet development"
+
+[lib]
+name = "gotee_syscall"
