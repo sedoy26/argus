@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "demo": "bun run demo.ts",
     "set-resolver": "bun run sepolia-set-resolver.ts",
     "verify": "bun run sepolia-verify.ts"
   },
