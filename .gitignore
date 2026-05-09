@@ -53,3 +53,11 @@ forge-cache/
 presentation/backup-video/*.mp4
 presentation/backup-video/*.mov
 !presentation/backup-video/.gitkeep
+
+# Agentic / AI instruction files — never commit
+CLAUDE.md
+**/CLAUDE.md
+*-WIRING.md
+**/*-WIRING.md
+.claude/
+.cursor/
