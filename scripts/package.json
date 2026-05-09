@@ -1,0 +1,16 @@
+{
+  "name": "argus-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "set-resolver": "bun run sepolia-set-resolver.ts",
+    "verify": "bun run sepolia-verify.ts"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}
