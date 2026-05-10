@@ -237,13 +237,17 @@ function emptyForCallData(callData: Hex): Response {
 async function handleHealth(): Promise<Response> {
   let signalApi = 'unreachable';
   try {
-    const r = await fetch(signalApiBase + '/health');
+    // Bounded probe: Railway (and others) fail the deploy if /health hangs
+    // when signal-api is rolling, mis-routed, or TCP-stalls.
+    const r = await fetch(signalApiBase + '/health', { signal: AbortSignal.timeout(2500) });
     if (r.ok) {
       const body = (await r.json()) as { status?: string };
       signalApi = body.status ?? 'unknown';
+    } else {
+      signalApi = `http_${r.status}`;
     }
   } catch {
-    /* leave as unreachable */
+    /* unreachable / timeout / abort */
   }
   return json({
     status: 'ok',
