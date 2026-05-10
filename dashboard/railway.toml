@@ -1,5 +1,5 @@
 [build]
-builder = "nixpacks"
+# Railway default is RAILPACK; "nixpacks" is no longer a valid builder in config-as-code and can fail the image build.
 # From repo root: only redeploy this service when its package changes (GitHub push autodeploy).
 watchPatterns = ["/dashboard/**"]
 
