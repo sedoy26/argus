@@ -1,6 +1,6 @@
-// Thin wrappers over the Vite dev-server proxies.
-//   /api → signal-api
-//   /gw  → ens-resolver gateway
+// Dev: Vite proxies `/api` → signal-api and `/gw` → ens-resolver.
+// Production: set `VITE_SIGNAL_API` and `VITE_GATEWAY_URL` (build-time) so
+// the browser calls your hosted services directly (CORS must allow the UI origin).
 
 import type {
   ArgusEvent,
@@ -10,17 +10,42 @@ import type {
   HealthInfo,
 } from './types';
 
+function trimSlash(s: string): string {
+  return s.replace(/\/+$/, '');
+}
+
+const SIGNAL_API_BASE = trimSlash(import.meta.env.VITE_SIGNAL_API ?? '');
+const GATEWAY_BASE = trimSlash(import.meta.env.VITE_GATEWAY_URL ?? '');
+
+/** Path on signal-api, e.g. `/health` or `/risk/0x…`. */
+export function signalUrl(path: string): string {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (SIGNAL_API_BASE) return `${SIGNAL_API_BASE}${p}`;
+  return `/api${p}`;
+}
+
+/** Path on ens gateway, e.g. `/preview/0x…`. */
+export function gatewayUrl(path: string): string {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (GATEWAY_BASE) return `${GATEWAY_BASE}${p}`;
+  return `/gw${p}`;
+}
+
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!res.ok) {
     const empty = !text.trim();
     const hint500 =
       res.status >= 500 && empty
-        ? ' Empty response usually means the Vite proxy could not reach signal-api (wrong port). Default proxy is :8787; ./reset.sh runs signal-api on :8788 — then use VITE_API_TARGET=http://127.0.0.1:8788 (and VITE_GW_TARGET=http://127.0.0.1:8789).'
+        ? SIGNAL_API_BASE
+          ? ' Empty response from signal-api — check deployment / ARGUS logs.'
+          : ' Empty response usually means the Vite proxy could not reach signal-api (wrong port). Default proxy is :8787; ./reset.sh runs signal-api on :8788 — then use VITE_API_TARGET=http://127.0.0.1:8788 (and VITE_GW_TARGET=http://127.0.0.1:8789).'
         : '';
     const hint404 =
       res.status === 404 && /not found/i.test(text)
-        ? ' If /api/health works in the browser but this path 404s, restart signal-api after git pull. If nothing listens on the Vite proxy port, use `cd dashboard && bun run dev:reset` when ./reset.sh is running.'
+        ? SIGNAL_API_BASE
+          ? ' Path missing on signal-api — redeploy API or check VITE_SIGNAL_API matches the running service.'
+          : ' If /api/health works in the browser but this path 404s, restart signal-api after git pull. If nothing listens on the Vite proxy port, use `cd dashboard && bun run dev:reset` when ./reset.sh is running.'
         : '';
     throw new Error(`${res.status}: ${empty ? '(empty)' : text}${hint500}${hint404}`);
   }
@@ -32,20 +57,20 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 }
 
 export async function getHealth(): Promise<HealthInfo> {
-  return jsonOrThrow<HealthInfo>(await fetch('/api/health'));
+  return jsonOrThrow<HealthInfo>(await fetch(signalUrl('/health')));
 }
 
 export async function getBoot(): Promise<BootInfo> {
-  return jsonOrThrow<BootInfo>(await fetch('/api/boot'));
+  return jsonOrThrow<BootInfo>(await fetch(signalUrl('/boot')));
 }
 
 export async function getRisk(addr: string): Promise<ConsensusEnvelope> {
-  return jsonOrThrow<ConsensusEnvelope>(await fetch(`/api/risk/${addr}`));
+  return jsonOrThrow<ConsensusEnvelope>(await fetch(signalUrl(`/risk/${addr}`)));
 }
 
 export async function getPreview(addr: string): Promise<GatewayPreview | null> {
   try {
-    const r = await fetch(`/gw/preview/${addr}`);
+    const r = await fetch(gatewayUrl(`/preview/${addr}`));
     if (!r.ok) return null;
     return (await r.json()) as GatewayPreview;
   } catch {
@@ -67,7 +92,7 @@ export async function submitSignal(args: SubmitSignalArgs): Promise<{
   consensus: ConsensusEnvelope;
 }> {
   return jsonOrThrow<{ consensus: ConsensusEnvelope }>(
-    await fetch('/api/signals', {
+    await fetch(signalUrl('/signals'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(args),
@@ -76,8 +101,8 @@ export async function submitSignal(args: SubmitSignalArgs): Promise<{
 }
 
 export async function getEvents(afterId?: number): Promise<ArgusEvent[]> {
-  const url = afterId ? `/api/events?after=${afterId}` : '/api/events?n=50';
-  return jsonOrThrow<ArgusEvent[]>(await fetch(url));
+  const q = afterId ? `?after=${afterId}` : '?n=50';
+  return jsonOrThrow<ArgusEvent[]>(await fetch(signalUrl(`/events${q}`)));
 }
 
 export interface IntelResult {
@@ -91,7 +116,7 @@ export interface IntelResult {
 
 export async function submitIntel(args: { tweetUrl?: string; text?: string }): Promise<IntelResult> {
   return jsonOrThrow<IntelResult>(
-    await fetch('/api/intel', {
+    await fetch(signalUrl('/intel'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(args),
@@ -114,7 +139,9 @@ export interface SocialAgentRow {
 }
 
 export async function listSocialAgents(): Promise<SocialAgentRow[]> {
-  const j = await jsonOrThrow<{ agents?: SocialAgentRow[] }>(await fetch('/api/agents/social'));
+  const j = await jsonOrThrow<{ agents?: SocialAgentRow[] }>(
+    await fetch(signalUrl('/agents/social')),
+  );
   return j.agents ?? [];
 }
 
@@ -123,7 +150,7 @@ export async function createSocialAgent(body: {
   pollSec?: number;
 }): Promise<{ ok: boolean; agent: SocialAgentRow }> {
   return jsonOrThrow(
-    await fetch('/api/agents/social', {
+    await fetch(signalUrl('/agents/social'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -133,7 +160,10 @@ export async function createSocialAgent(body: {
 
 export async function deleteSocialAgent(id: string): Promise<{ ok: boolean }> {
   return jsonOrThrow(
-    await fetch(`/api/agents/social?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    await fetch(
+      signalUrl(`/agents/social?id=${encodeURIComponent(id)}`),
+      { method: 'DELETE' },
+    ),
   );
 }
 
@@ -186,7 +216,7 @@ function normalizeAccessPayload(raw: unknown): AccessInfo {
 
 export async function getAccess(address: string): Promise<AccessInfo> {
   const raw = await jsonOrThrow<unknown>(
-    await fetch(`/api/access?address=${encodeURIComponent(address)}`),
+    await fetch(signalUrl(`/access?address=${encodeURIComponent(address)}`)),
   );
   return normalizeAccessPayload(raw);
 }
@@ -197,7 +227,9 @@ export async function getAuthNonce(
 ): Promise<{ nonce: string; scope: string; expiresInSec: number }> {
   return jsonOrThrow(
     await fetch(
-      `/api/auth/nonce?scope=${encodeURIComponent(scope)}&address=${encodeURIComponent(address)}`,
+      signalUrl(
+        `/auth/nonce?scope=${encodeURIComponent(scope)}&address=${encodeURIComponent(address)}`,
+      ),
     ),
   );
 }
@@ -281,7 +313,7 @@ export async function submitEnrollmentRequest(p: {
   signature: string;
 }): Promise<{ ok: boolean; id: number }> {
   return jsonOrThrow(
-    await fetch('/api/enrollment', {
+    await fetch(signalUrl('/enrollment'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(p),
@@ -303,7 +335,7 @@ export async function adminListEnrollments(p: {
   nonce: string;
   signature: string;
 }): Promise<EnrollmentRow[]> {
-  const res = await fetch('/api/enrollment/moderate', {
+  const res = await fetch(signalUrl('/enrollment/moderate'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ action: 'list', ...p }),
@@ -320,7 +352,7 @@ export async function adminDecideEnrollment(p: {
   enrollmentId: number;
   decision: 'approve' | 'reject';
 }): Promise<void> {
-  const res = await fetch('/api/enrollment/moderate', {
+  const res = await fetch(signalUrl('/enrollment/moderate'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

@@ -50,12 +50,19 @@ const FRONTEND_URL_TEMPLATE =
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET,POST,OPTIONS',
+  'access-control-allow-headers': 'content-type',
+} as const;
+
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     ...init,
     headers: {
       'content-type': 'application/json',
       'cache-control': 'no-store',
+      ...CORS_HEADERS,
       ...init?.headers,
     },
   });
@@ -276,6 +283,9 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     const path = url.pathname;
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: { ...CORS_HEADERS } });
+    }
     try {
       if (req.method === 'GET' && path === '/health') return handleHealth();
 

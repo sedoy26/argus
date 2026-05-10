@@ -620,7 +620,7 @@ const server = Bun.serve({
     // CORS for dashboard dev server
     const corsHeaders = {
       'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
+      'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
       'access-control-allow-headers': 'content-type',
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });

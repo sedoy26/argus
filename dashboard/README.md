@@ -33,8 +33,23 @@ so the SPA fetches from same-origin paths and avoids any CORS dance.
 **Ports:** If the repo root `scripts/.env` defines `ARGUS_API` / `ARGUS_GATEWAY`, Vite uses those for the proxy (same values as `reset.sh` demos). Otherwise set `VITE_API_TARGET` / `VITE_GW_TARGET`, or run `bun run dev:reset` when using `./reset.sh` on **8788** / **8789**.
 
 If `/api` points at the wrong process you may see **404** on new routes; if nothing is listening on the proxy target you may see **500** with an empty body after connecting a wallet.
-For production you'd point `/api` and `/gw` at your hosted endpoints
-through a reverse proxy.
+
+## Production build
+
+Set **build-time** env (e.g. on Railway) so the SPA calls your APIs directly:
+
+- `VITE_SIGNAL_API` — origin only, e.g. `https://argus-signal-api-production.up.railway.app`
+- `VITE_GATEWAY_URL` — e.g. `https://argus-gateway-production.up.railway.app`
+
+Then:
+
+```bash
+bun install
+bun run build
+bun run start   # serves ./dist on $PORT (Railway)
+```
+
+Omit both variables in dev to keep using the Vite `/api` and `/gw` proxies.
 
 ## Demo flow
 

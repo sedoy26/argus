@@ -2041,7 +2041,7 @@ export function App() {
       )}
 
       <footer className="max-w-7xl mx-auto px-6 py-6 text-[11px] text-(--color-argus-muted)">
-        polling every 3s · proxy /api → signal-api · /gw → ens-resolver
+        polling every 3s · dev: Vite /api & /gw proxies · prod: VITE_SIGNAL_API & VITE_GATEWAY_URL
       </footer>
     </div>
   );
