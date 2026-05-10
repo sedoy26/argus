@@ -47,6 +47,7 @@ import {
   setActiveEthereumProvider,
   type WalletOption,
 } from './walletProvider';
+import { ensureSepoliaChain } from './sepoliaWallet';
 
 // ---------------------------------------------------------------------------
 // ArgusRegistry on-chain client
@@ -1485,6 +1486,7 @@ function RoleApplicationsRail({
         )}
         <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
           Tap a role, add a short pitch — admins see it as <span className="text-violet-300">pending</span> in their queue.
+          {' '}Signing switches your wallet to <span className="text-violet-200 font-medium">Sepolia (11155111)</span> if needed — Argus demo is Sepolia-only.
         </p>
         {anyPending && (
           <div className="text-[11px] rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-amber-100/95">
@@ -1593,7 +1595,9 @@ function RoleApplicationsRail({
                 {busy ? 'Signing…' : 'Sign & submit'}
               </button>
             </div>
-            <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">One-time nonce + wallet signature — same flow as the admin moderation queue.</p>
+            <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
+              One-time nonce + wallet signature — same flow as the admin moderation queue. Your wallet will switch to <span className="text-violet-200/95">Ethereum Sepolia (11155111)</span> before signing so Argus demo contracts and contributor flows stay on one network.
+            </p>
           </div>
         </div>
       )}
@@ -1663,6 +1667,9 @@ function EnrollmentModeration({ wallet, onChanged }: { wallet: string; onChanged
         </button>
       </div>
       {err && <div className="text-xs text-rose-400">{err}</div>}
+      <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
+        Approve/reject signs on <span className="text-violet-200/90">Sepolia (11155111)</span> — the dashboard switches your wallet there automatically before each signature.
+      </p>
       {rows.length === 0 && !err && (
         <p className="text-xs text-(--color-argus-muted)">No pending rows (or list not loaded yet).</p>
       )}
@@ -1936,6 +1943,7 @@ function AdminView({
 
     setTxStatus(prev => ({ ...prev, [agentAddr]: 'pending…' }));
     try {
+      await ensureSepoliaChain(eth);
       const accounts = await eth.request({ method: 'eth_requestAccounts' }) as string[];
       const from = accounts[0];
 
@@ -2004,6 +2012,7 @@ function AdminView({
     if (!eth) { setRegErr('Connect with a browser wallet for write ops'); return; }
     void (async () => {
       try {
+        await ensureSepoliaChain(eth);
         const accounts = await eth.request({ method: 'eth_requestAccounts' }) as string[];
         const from = accounts[0];
         // Use viem encodeFunctionData for correct ABI encoding of

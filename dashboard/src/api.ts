@@ -19,6 +19,7 @@ import {
   setActiveEthereumProvider,
   type Eip1193Like,
 } from './walletProvider';
+import { ensureSepoliaChain } from './sepoliaWallet';
 
 function trimSlash(s: string): string {
   return s.replace(/\/+$/, '');
@@ -368,6 +369,7 @@ export type { Eip1193Like as EthereumProvider } from './walletProvider';
 export async function walletPersonalSign(walletAddress: string, message: string): Promise<string> {
   const eth = getActiveEthereumProvider();
   if (!eth) throw new Error('No Ethereum wallet — connect again');
+  await ensureSepoliaChain(eth);
   return eth.request({
     method: 'personal_sign',
     params: [message, walletAddress],
@@ -381,6 +383,7 @@ export async function connectWithEthereumProvider(provider: Eip1193Like): Promis
   const list = Array.isArray(acc) ? acc : [];
   const a = list[0];
   if (typeof a !== 'string' || !/^0x[0-9a-fA-F]{40}$/i.test(a)) throw new Error('No account returned');
+  await ensureSepoliaChain(provider);
   return a.toLowerCase();
 }
 
