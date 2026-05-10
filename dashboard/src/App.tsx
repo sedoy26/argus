@@ -35,6 +35,7 @@ import type {
   HealthInfo,
   Score,
 } from './types';
+import { AppBackdrop, BrandMark, ParallaxLogo } from './ui/AppShell';
 
 // ---------------------------------------------------------------------------
 // ArgusRegistry on-chain client
@@ -331,7 +332,7 @@ function EventRow({ ev }: { ev: ArgusEvent }) {
           setOpen((v) => !v);
         }
       }}
-      className={`rounded-lg border px-3 py-2.5 text-xs ${color} transition-all cursor-pointer select-none hover:bg-black/15 ${open ? 'ring-1 ring-white/20 shadow-sm' : ''}`}
+      className={`rounded-xl border px-3 py-2.5 text-xs ${color} transition-all duration-200 cursor-pointer select-none hover:bg-black/20 hover:scale-[1.008] hover:shadow-md motion-reduce:hover:scale-100 ${open ? 'ring-1 ring-amber-400/25 shadow-md' : ''}`}
     >
       <div className="flex items-start gap-2">
         <span className="text-base leading-none mt-0.5 shrink-0">{icon}</span>
@@ -409,8 +410,8 @@ function EventFeed({ events, filter }: { events: ArgusEvent[]; filter?: EventKin
   }, [visible, autoScroll]);
 
   return (
-    <section className="flex flex-col rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/60 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--color-argus-border)">
+    <section className="flex flex-col glass-surface glass-surface-hover overflow-hidden motion-safe:hover:-translate-y-0.5">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">live event feed</span>
@@ -447,39 +448,49 @@ function LandingPage({ onConnect }: { onConnect: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   return (
-    <div className="min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center px-6 py-16 bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950">
-      <div className="max-w-lg text-center space-y-6">
-        <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-300 via-orange-400 to-rose-500 grid place-items-center text-zinc-950 font-bold text-2xl mx-auto">
-          Ar
+    <div className="relative min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center px-6 py-16 overflow-hidden">
+      <AppBackdrop />
+      <div className="relative z-10 w-full max-w-md">
+        <div className="glass-surface glass-surface-hover px-8 py-10 text-center space-y-7 motion-safe:hover:-translate-y-0.5">
+          <ParallaxLogo className="h-40 w-40" intensity={14} />
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-amber-100 via-amber-300 to-amber-600 bg-clip-text text-transparent">
+              Argus
+            </h1>
+            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-(--color-argus-gold-dim)">hundred-eyed guardian</p>
+          </div>
+          <p className="text-sm text-(--color-argus-muted) leading-relaxed">
+            TEE-attested risk intelligence, Sourcify-backed verification, and automated protection when consensus
+            crosses your threshold. Connect a wallet to open the demo console — judges see a simplified user
+            experience; contributors can request elevated roles for review.
+          </p>
+          {err && (
+            <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-400/25 rounded-xl px-3 py-2 backdrop-blur-sm">
+              {err}
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void (async () => {
+                setBusy(true);
+                setErr('');
+                try {
+                  await onConnect();
+                } catch (e) {
+                  setErr((e as Error).message ?? 'connect failed');
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+            className="glass-cta w-full px-8 py-3.5 rounded-xl text-zinc-950 font-semibold text-sm disabled:opacity-40"
+          >
+            {busy ? 'Opening wallet…' : 'Connect wallet'}
+          </button>
+          <p className="text-[11px] text-(--color-argus-muted)">Sepolia testnet · MetaMask or any injected wallet</p>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">Argus</h1>
-        <p className="text-sm text-(--color-argus-muted) leading-relaxed">
-          TEE-attested risk intelligence, Sourcify-backed verification, and automated protection when consensus
-          crosses your threshold. Connect a wallet to open the demo console — judges see a simplified user
-          experience; contributors can request elevated roles for review.
-        </p>
-        {err && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2">{err}</div>}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            void (async () => {
-              setBusy(true);
-              setErr('');
-              try {
-                await onConnect();
-              } catch (e) {
-                setErr((e as Error).message ?? 'connect failed');
-              } finally {
-                setBusy(false);
-              }
-            })();
-          }}
-          className="px-8 py-3 rounded-xl bg-amber-400/90 hover:bg-amber-300 text-zinc-950 font-semibold text-sm disabled:opacity-40 transition"
-        >
-          {busy ? 'Opening wallet…' : 'Connect wallet'}
-        </button>
-        <p className="text-[11px] text-zinc-600">Sepolia testnet · MetaMask or any injected wallet</p>
       </div>
     </div>
   );
@@ -519,20 +530,18 @@ function Header({
 }) {
   const ok = health?.status === 'ok';
   return (
-    <header className="border-b border-(--color-argus-border) bg-(--color-argus-card)/80 backdrop-blur sticky top-0 z-20">
+    <header className="glass-header sticky top-0 z-20 motion-safe:transition-shadow motion-safe:hover:shadow-[0_8px_40px_rgba(0,0,0,0.35)]">
       <div className="max-w-7xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between gap-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-300 via-orange-400 to-rose-500 grid place-items-center text-zinc-950 font-bold text-sm">
-            Ar
-          </div>
-          <div>
-            <div className="text-sm font-semibold tracking-tight">Argus</div>
-            <div className="text-xs text-(--color-argus-muted)">the hundred-eyed guardian of Web3</div>
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandMark className="h-10 w-10" />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold tracking-tight text-amber-50">Argus</div>
+            <div className="text-xs text-(--color-argus-muted) truncate">the hundred-eyed guardian of Web3</div>
           </div>
         </div>
 
         {/* Role switcher */}
-        <div className="flex items-center rounded-lg border border-(--color-argus-border) bg-(--color-argus-bg) p-0.5 text-xs font-medium">
+        <div className="flex items-center rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-0.5 text-xs font-medium shadow-inner shadow-black/20">
           {showScoutTab && (
             <button type="button" onClick={() => onRoleChange('scout')}
               className={`px-3 py-1.5 rounded-md transition ${role === 'scout' ? 'bg-amber-400/90 text-zinc-950' : 'text-(--color-argus-muted) hover:text-(--color-argus-text)'}`}>
@@ -553,7 +562,7 @@ function Header({
 
         <div className="flex items-center gap-3 text-xs flex-wrap justify-end">
           {wallet && (
-            <div className="flex items-center gap-2 rounded-lg border border-(--color-argus-border) bg-(--color-argus-bg) px-2.5 py-1">
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-md px-2.5 py-1 shadow-sm">
               <span className="mono text-[10px] text-(--color-argus-muted) max-w-[120px] truncate" title={wallet}>{wallet.slice(0, 6)}…{wallet.slice(-4)}</span>
               <button type="button" onClick={() => void onDisconnect()} className="text-[10px] text-rose-400 hover:text-rose-300">Log out</button>
             </div>
@@ -629,7 +638,7 @@ function IntelPanel({ onDone, allowSocialSource = true }: { onDone: () => void; 
   );
 
   return (
-    <div className="rounded-xl border border-amber-400/30 bg-(--color-argus-card)/60 overflow-hidden">
+    <div className="glass-surface glass-surface-hover overflow-hidden border-amber-400/25 motion-safe:hover:-translate-y-0.5">
       {/* header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-400/20 bg-amber-400/5">
         <span className="text-amber-300 text-base">🔍</span>
@@ -829,7 +838,7 @@ function SocialAgentPanel({ onAgentsChanged }: { onAgentsChanged: () => void }) 
   };
 
   return (
-    <div className="rounded-xl border border-sky-500/30 bg-(--color-argus-card)/60 overflow-hidden">
+    <div className="glass-surface glass-surface-hover overflow-hidden border-sky-400/20 motion-safe:hover:-translate-y-0.5">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-500/20 bg-sky-500/5">
         <span className="text-sky-300 text-base">🤖</span>
         <span className="text-sm font-semibold text-sky-200">Social scout agent</span>
@@ -913,7 +922,7 @@ function ContractCard({ addr, state, onSelect, isSelected }: {
   return (
     <button
       onClick={onSelect}
-      className={`text-left rounded-xl border p-4 hover:bg-(--color-argus-card) transition ${isSelected ? 'border-amber-400/60 bg-(--color-argus-card)' : 'border-(--color-argus-border) bg-(--color-argus-card)/50'}`}
+      className={`text-left glass-surface glass-surface-hover p-4 motion-safe:hover:-translate-y-1 ${isSelected ? 'border-amber-400/50 ring-1 ring-amber-400/25 shadow-[0_0_28px_rgba(251,191,36,0.12)]' : ''}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="mono text-sm truncate" title={addr}>{addr.slice(0, 10)}…{addr.slice(-8)}</div>
@@ -953,7 +962,7 @@ function DetailPanel({ addr, state }: { addr: string; state: RiskState | undefin
   const env = state?.envelope;
   const records = state?.preview?.records ?? {};
   return (
-    <section className="rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/60 p-5 space-y-5">
+    <section className="glass-surface glass-surface-hover p-5 space-y-5 motion-safe:hover:-translate-y-0.5">
       <div>
         <div className="text-xs uppercase tracking-wider text-(--color-argus-muted)">contract</div>
         <div className="mono text-sm break-all">{addr}</div>
@@ -1011,7 +1020,7 @@ function BundlesCard({
   onSocialChange: (on: boolean) => void;
 }) {
   return (
-    <div className="rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/60 p-4 space-y-3">
+    <div className="glass-surface glass-surface-hover p-4 space-y-3 motion-safe:hover:-translate-y-0.5">
       <div className="text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">Bundles &amp; add-ons</div>
       <div className="text-xs text-(--color-argus-muted) space-y-1">
         <p><span className="text-emerald-400 font-medium">Included for everyone:</span> Sourcify watcher agent — automated SWAT-style source checks land in the live feed without any toggle.</p>
@@ -1055,7 +1064,7 @@ function ContributorRequestCard({
   if (access.privileged) return null;
   if (access.pending) {
     return (
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200/90">
+      <div className="glass-surface border-amber-400/30 p-4 text-xs text-amber-200/90 bg-amber-500/5">
         <div className="font-semibold text-amber-300">Contributor request pending</div>
         <p className="mt-1 opacity-80">You asked for <span className="font-medium">{access.pending.requestedRole}</span>. An Argus admin will review your request in the admin console.</p>
       </div>
@@ -1094,7 +1103,7 @@ function ContributorRequestCard({
   };
 
   return (
-    <div className="rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/60 p-4 space-y-3">
+    <div className="glass-surface glass-surface-hover p-4 space-y-3 motion-safe:hover:-translate-y-0.5">
       <div className="text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">Become a trusted participant</div>
       <p className="text-xs text-(--color-argus-muted)">
         Describe your background and pick a role. An admin reviews the queue and approves — then your wallet unlocks the matching console (e.g. Scout intel panel).
@@ -1185,7 +1194,7 @@ function EnrollmentModeration({ wallet, onChanged }: { wallet: string; onChanged
   };
 
   return (
-    <div className="rounded-xl border border-violet-500/30 bg-violet-950/20 p-5 space-y-3 mb-6">
+    <div className="glass-surface glass-surface-hover border-violet-400/25 p-5 space-y-3 mb-6 bg-violet-950/10 motion-safe:hover:-translate-y-0.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-sm font-semibold text-violet-200">Pending contributor requests</div>
         <button
@@ -1287,7 +1296,7 @@ function UserView({
       <ContributorRequestCard wallet={wallet} access={access} onDone={onAccessRefresh} />
 
       {/* status banner */}
-      <div className={`rounded-xl border p-5 ${bannerClass}`}>
+      <div className={`glass-surface glass-surface-hover p-5 motion-safe:hover:-translate-y-0.5 ${bannerClass}`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-xs uppercase tracking-wider text-(--color-argus-muted) mb-1">
@@ -1318,7 +1327,7 @@ function UserView({
       </div>
 
       {/* guardian status */}
-      <div className={`rounded-xl border p-4 text-sm ${guardianFired ? 'border-rose-500/40 bg-rose-500/10' : 'border-(--color-argus-border) bg-(--color-argus-card)/40'}`}>
+      <div className={`glass-surface glass-surface-hover p-4 text-sm motion-safe:hover:-translate-y-0.5 ${guardianFired ? 'border-rose-400/35 bg-rose-500/10' : ''}`}>
         <div className="flex items-center gap-2 font-semibold mb-2">
           <span>🛡️</span>
           <span className={guardianFired ? 'text-rose-300' : 'text-(--color-argus-muted)'}>
@@ -1337,7 +1346,7 @@ function UserView({
 
       {/* TX intercept alerts (SWAT-004 — independent from approval revocation) */}
       {txBlocked.length > 0 && (
-        <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-4 space-y-2">
+        <div className="glass-surface border-orange-400/35 bg-orange-500/10 p-4 space-y-2">
           <div className="flex items-center gap-2 font-semibold text-orange-300 text-sm">
             <span>⛔</span>
             <span>Phishing Transaction Intercepted</span>
@@ -1352,8 +1361,8 @@ function UserView({
       )}
 
       {/* your approvals */}
-      <div className="rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/60 overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-(--color-argus-border) text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">
+      <div className="glass-surface overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-white/10 text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">
           Your Approvals
         </div>
         <div className="divide-y divide-(--color-argus-border)">
@@ -1921,35 +1930,43 @@ export function App() {
 
   if (!access && !accessErr) {
     return (
-      <div className="min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center gap-3 px-6">
-        <p className="text-sm text-(--color-argus-muted)">Loading access…</p>
-        <button type="button" onClick={() => void disconnect()} className="text-xs text-rose-400 hover:text-rose-300">
-          Log out
-        </button>
+      <div className="relative min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center gap-4 px-6">
+        <AppBackdrop />
+        <div className="relative z-10 glass-surface px-8 py-10 flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
+          <p className="text-sm text-(--color-argus-muted)">Loading access…</p>
+          <button type="button" onClick={() => void disconnect()} className="text-xs text-rose-400 hover:text-rose-300">
+            Log out
+          </button>
+        </div>
       </div>
     );
   }
 
   if (accessErr || !access) {
     return (
-      <div className="min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center gap-4 px-6 max-w-md mx-auto text-center">
-        <p className="text-sm text-rose-400">{accessErr || 'Could not load access policy.'}</p>
-        <button
-          type="button"
-          onClick={() => void refreshAccess(wallet)}
-          className="text-xs px-4 py-2 rounded-lg bg-(--color-argus-card) border border-(--color-argus-border) hover:bg-(--color-argus-card)/80"
-        >
-          Retry
-        </button>
-        <button type="button" onClick={() => void disconnect()} className="text-xs text-(--color-argus-muted) hover:text-zinc-300">
-          Log out
-        </button>
+      <div className="relative min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center gap-4 px-6">
+        <AppBackdrop />
+        <div className="relative z-10 glass-surface px-8 py-10 max-w-md w-full text-center space-y-4">
+          <p className="text-sm text-rose-400">{accessErr || 'Could not load access policy.'}</p>
+          <button
+            type="button"
+            onClick={() => void refreshAccess(wallet)}
+            className="text-xs px-4 py-2 rounded-xl glass-surface glass-surface-hover border-white/10"
+          >
+            Retry
+          </button>
+          <button type="button" onClick={() => void disconnect()} className="text-xs text-(--color-argus-muted) hover:text-zinc-300">
+            Log out
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen text-(--color-argus-text)">
+    <div className="relative min-h-screen text-(--color-argus-text)">
+      <AppBackdrop />
       <Header
         health={health}
         boot={boot}
@@ -1963,14 +1980,14 @@ export function App() {
 
       {role === 'scout' ? (
         /* ── Scout view ────────────────────────────────────────────── */
-        <main className="max-w-7xl mx-auto px-6 py-6 grid gap-6 lg:grid-cols-[340px_1fr]">
+        <main className="relative z-10 max-w-7xl mx-auto px-6 py-6 grid gap-6 lg:grid-cols-[340px_1fr]">
           {/* left: intel panel + watchlist */}
           <aside className="space-y-4">
             <IntelPanel onDone={refetchAll} allowSocialSource={allowSocialSource} />
             <SocialAgentPanel onAgentsChanged={refetchAll} />
 
             {/* watchlist (collapsed-style) */}
-            <div className="rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/40 p-4 space-y-3">
+            <div className="glass-surface glass-surface-hover p-4 space-y-3 motion-safe:hover:-translate-y-0.5">
               <div className="text-xs uppercase tracking-wider text-(--color-argus-muted)">Watched contracts</div>
               <div className="space-y-1">
                 {watched.map((a) => {
@@ -1992,7 +2009,7 @@ export function App() {
             </div>
 
             {boot && (
-              <div className="rounded-md border border-(--color-argus-border) bg-(--color-argus-card)/40 p-3 text-[11px] text-(--color-argus-muted) space-y-1">
+              <div className="glass-surface p-3 text-[11px] text-(--color-argus-muted) space-y-1">
                 <div>code_hash <Hex value={boot.code_hash} len={5} /></div>
                 <div>boot_commit <Hex value={boot.boot_commitment} len={5} /></div>
                 <div>signals {boot.signal_count} / {boot.max_signals}</div>
@@ -2013,7 +2030,7 @@ export function App() {
         </main>
       ) : role === 'user' ? (
         /* ── User view ─────────────────────────────────────────────── */
-        <main className="max-w-3xl mx-auto px-6 py-8">
+        <main className="relative z-10 max-w-3xl mx-auto px-6 py-8">
           <div className="mb-6">
             <h1 className="text-lg font-semibold">Your Wallet Protection</h1>
             <p className="text-sm text-(--color-argus-muted) mt-1">
@@ -2035,13 +2052,15 @@ export function App() {
         </main>
       ) : (
         /* ── Admin view ────────────────────────────────────────────── */
-        <main className="max-w-5xl mx-auto px-6 py-8">
+        <main className="relative z-10 max-w-5xl mx-auto px-6 py-8">
           <AdminView wallet={wallet} onAccessRefresh={() => refreshAccess(wallet)} />
         </main>
       )}
 
-      <footer className="max-w-7xl mx-auto px-6 py-6 text-[11px] text-(--color-argus-muted)">
-        polling every 3s · dev: Vite /api & /gw proxies · prod: VITE_SIGNAL_API & VITE_GATEWAY_URL
+      <footer className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+        <div className="glass-surface px-4 py-3 text-[11px] text-(--color-argus-muted) text-center">
+          polling every 3s · dev: Vite /api & /gw proxies · prod: VITE_SIGNAL_API & VITE_GATEWAY_URL
+        </div>
       </footer>
     </div>
   );
