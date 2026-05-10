@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
-    "smoke": "bun run scripts/local-demo.ts"
+    "smoke": "bun run scripts/local-demo.ts",
+    "kms-demo": "bun run scripts/kms-space-demo.ts"
   },
   "dependencies": {
     "viem": "^2.21.0",

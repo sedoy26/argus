@@ -179,22 +179,28 @@ function decodeSignatureBytes(sig: string): Uint8Array {
 // Factory: pick a signer by env
 // ---------------------------------------------------------------------------
 
-/** Build a signer from process env. Returns LocalSigner if
- *  `GUARDIAN_PRIVATE_KEY` is set, otherwise KmsSigner if
- *  `ORBITPORT_CLIENT_ID` + `ORBITPORT_CLIENT_SECRET` + `KMS_KEY_ID`
- *  are all set. Errors loudly if neither path is fully configured. */
+/** Build a signer from process env.
+ *
+ * Priority (SpaceComputer / hackathon default):
+ *  1. **KmsSigner** when `ORBITPORT_CLIENT_ID` + `ORBITPORT_CLIENT_SECRET` + `KMS_KEY_ID`
+ *     are all set — unless `GUARDIAN_FORCE_LOCAL_SIGNER=1` (then local key wins).
+ *  2. **LocalSigner** when `GUARDIAN_PRIVATE_KEY` is set.
+ *
+ * Previously local key won whenever it was present, so demos with both demo keys
+ * and Orbitport creds never exercised `kms.sign()` on revoke.
+ */
 export async function signerFromEnv(): Promise<Signer> {
-  const pk = Bun.env.GUARDIAN_PRIVATE_KEY;
-  if (pk) {
-    if (!pk.startsWith('0x') || pk.length !== 66) {
-      throw new Error('GUARDIAN_PRIVATE_KEY must be a 0x-prefixed 32-byte hex');
-    }
-    return new LocalSigner(pk as Hex);
-  }
-  const clientId = Bun.env.ORBITPORT_CLIENT_ID;
-  const clientSecret = Bun.env.ORBITPORT_CLIENT_SECRET;
-  const keyId = Bun.env.KMS_KEY_ID;
-  if (clientId && clientSecret && keyId) {
+  const forceLocal =
+    Bun.env.GUARDIAN_FORCE_LOCAL_SIGNER === '1' ||
+    Bun.env.GUARDIAN_FORCE_LOCAL_SIGNER === 'true';
+
+  const clientId = Bun.env.ORBITPORT_CLIENT_ID ?? '';
+  const clientSecret = Bun.env.ORBITPORT_CLIENT_SECRET ?? '';
+  const keyId = Bun.env.KMS_KEY_ID ?? '';
+  const kmsReady =
+    clientId.length > 0 && clientSecret.length > 0 && keyId.length > 0;
+
+  if (kmsReady && !forceLocal) {
     return KmsSigner.connect({
       clientId,
       clientSecret,
@@ -204,9 +210,24 @@ export async function signerFromEnv(): Promise<Signer> {
       apiUrl: Bun.env.ORBITPORT_API_URL,
     });
   }
+
+  const pk = Bun.env.GUARDIAN_PRIVATE_KEY;
+  if (pk) {
+    if (!pk.startsWith('0x') || pk.length !== 66) {
+      throw new Error('GUARDIAN_PRIVATE_KEY must be a 0x-prefixed 32-byte hex');
+    }
+    return new LocalSigner(pk as Hex);
+  }
+
+  if (kmsReady && forceLocal) {
+    throw new Error(
+      'GUARDIAN_FORCE_LOCAL_SIGNER is set but GUARDIAN_PRIVATE_KEY is missing — unset FORCE or add a local key',
+    );
+  }
+
   throw new Error(
-    'Configure either GUARDIAN_PRIVATE_KEY or ' +
-      'ORBITPORT_CLIENT_ID + ORBITPORT_CLIENT_SECRET + KMS_KEY_ID',
+    'Configure either ORBITPORT_CLIENT_ID + ORBITPORT_CLIENT_SECRET + KMS_KEY_ID ' +
+      '(Space KMS) or GUARDIAN_PRIVATE_KEY (local dev). Optional: GUARDIAN_FORCE_LOCAL_SIGNER=1 to prefer local when both are set.',
   );
 }
 // Suppress unused-import lint when fromHex is referenced only by JSDoc
