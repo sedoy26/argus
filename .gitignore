@@ -19,9 +19,6 @@ typechain-types/
 .env
 .env.local
 
-# Local Railway deploy config (copy from scripts/railway/railway.deploy.config.example.json)
-scripts/railway/railway.deploy.config.json
-
 # Demo tooling (local only)
 reset.sh
 .env.*.local

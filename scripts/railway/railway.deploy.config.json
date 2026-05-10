@@ -1,5 +1,5 @@
 {
-  "_readme": "Repo tracks scripts/railway/railway.deploy.config.json — fork: edit projectId + githubRepo. Never put API tokens in JSON; use RAILWAY_API_TOKEN in the shell.",
+  "_readme": "No secrets here. Override matchName if your Railway service names differ. API token: export RAILWAY_API_TOKEN only in the shell.",
   "projectId": "ec21f2a5-c933-4436-8a2a-fa16a9aba733",
   "githubRepo": "doy26/argus",
   "branch": "main",

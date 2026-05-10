@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 /**
  * Configure existing Railway services for GitHub repo + branch, monorepo roots,
  * config-as-code paths, and GitHub autodeploy — via Railway public GraphQL API.
@@ -49,11 +53,17 @@ function argFlag(name: string): boolean {
   return process.argv.includes(name);
 }
 
-const CONFIG_PATH = `${import.meta.dir}/railway.deploy.config.json`;
+/** Directory containing this script (`scripts/railway/`). */
+const RAILWAY_SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const CONFIG_PATH = join(RAILWAY_SCRIPT_DIR, 'railway.deploy.config.json');
+
+function strField(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
 
 function readDeployFile(): Record<string, unknown> | null {
   try {
-    const raw = Bun.file(CONFIG_PATH).textSync();
+    const raw = readFileSync(CONFIG_PATH, 'utf8');
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return null;
@@ -180,10 +190,11 @@ async function main() {
 
   const fileMeta = readDeployFile();
   const projectId =
-    process.env.RAILWAY_PROJECT_ID?.trim() ||
-    (typeof fileMeta?.projectId === 'string' ? fileMeta.projectId.trim() : '');
+    process.env.RAILWAY_PROJECT_ID?.trim() || strField(fileMeta?.projectId);
   if (!projectId) {
-    console.error('Set RAILWAY_PROJECT_ID or add "projectId" to scripts/railway/railway.deploy.config.json.');
+    console.error(
+      `Set RAILWAY_PROJECT_ID or add a non-empty "projectId" to ${CONFIG_PATH} (see railway.deploy.config.example.json).`,
+    );
     process.exit(1);
   }
 
@@ -199,7 +210,7 @@ async function main() {
   const proj = data.project;
   const services = proj.services.edges;
   const envIdFromEnv = process.env.RAILWAY_ENVIRONMENT_ID?.trim();
-  const envIdFromFile = typeof fileMeta?.environmentId === 'string' ? fileMeta.environmentId.trim() : '';
+  const envIdFromFile = strField(fileMeta?.environmentId);
   const envNameFromEnv = process.env.RAILWAY_ENVIRONMENT_NAME?.trim();
   const envNameFromFile = typeof fileMeta?.environmentName === 'string' ? fileMeta.environmentName : undefined;
   const env = pickEnvironment(proj.environments.edges, {

@@ -64,7 +64,7 @@ Then you can wire **repo, branch, root directory, `railway.toml` path, and autod
 1. Put your Railway **API token in the shell only** (never in `railway.deploy.config.json`):
    - [Account or workspace token](https://railway.com/account/tokens) → `export RAILWAY_API_TOKEN="…"` (sent as `Authorization: Bearer`), or
    - **Project token** from the project → `export RAILWAY_PROJECT_ACCESS_TOKEN="…"` (sent as `Project-Access-Token`; see [tokens](https://docs.railway.com/guides/public-api#creating-a-token)).
-2. Copy `scripts/railway/railway.deploy.config.example.json` → `scripts/railway/railway.deploy.config.json` (gitignored) and set `githubRepo`, `branch`, optional `projectId`, and each `matchName` to match your Railway service names.
+2. Edit `scripts/railway/railway.deploy.config.json` (tracked defaults for this repo: `projectId`, `doy26/argus`, service `matchName`s). Forks should change `projectId` / `githubRepo` / `matchName` as needed.
 3. From the repo root:
 
 ```bash
