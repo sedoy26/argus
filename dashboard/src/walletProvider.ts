@@ -38,10 +38,11 @@ function labelLegacyProvider(p: unknown, index: number): string {
   if (!p || typeof p !== 'object') return `Wallet ${index + 1}`;
   const o = p as Record<string, unknown>;
   if (o.isBraveWallet) return 'Brave Wallet';
-  if (o.isMetaMask && !o.isBraveWallet) return 'MetaMask';
+  // Rainbow / Coinbase / Rabby often set isMetaMask for dapp compatibility — detect them before MetaMask.
   if (o.isRainbowWallet) return 'Rainbow';
   if (o.isCoinbaseWallet) return 'Coinbase Wallet';
   if (o.isRabby) return 'Rabby';
+  if (o.isMetaMask && !o.isBraveWallet) return 'MetaMask';
   return `Injected wallet ${index + 1}`;
 }
 
@@ -75,11 +76,15 @@ function sortWalletOptions(opts: WalletOption[]): WalletOption[] {
 /**
  * EIP-6963 discovery plus `ethereum.providers` / single `ethereum` fallback.
  * Waits briefly for announce events after requesting providers.
+ *
+ * When any wallet announces via EIP-6963, we return **only** those options. Merging
+ * `ethereum.providers` duplicates the same logical wallet (different object refs) and
+ * mislabels Rainbow as MetaMask because many injectors set `isMetaMask` for compatibility.
  */
 export async function discoverWalletOptions(): Promise<WalletOption[]> {
   if (typeof window === 'undefined') return [];
 
-  const raw: WalletOption[] = [];
+  const from6963: WalletOption[] = [];
 
   await new Promise<void>((resolve) => {
     const seenUuids = new Set<string>();
@@ -89,7 +94,7 @@ export async function discoverWalletOptions(): Promise<WalletOption[]> {
       if (!d?.info?.uuid || !d.provider || typeof d.provider.request !== 'function') return;
       if (seenUuids.has(d.info.uuid)) return;
       seenUuids.add(d.info.uuid);
-      raw.push({
+      from6963.push({
         id: d.info.uuid,
         name: d.info.name || d.info.rdns || 'Wallet',
         icon: d.info.icon,
@@ -104,6 +109,11 @@ export async function discoverWalletOptions(): Promise<WalletOption[]> {
     }, 500);
   });
 
+  if (from6963.length > 0) {
+    return sortWalletOptions(dedupeByProviderReference(from6963));
+  }
+
+  const raw: WalletOption[] = [];
   const eth = (window as unknown as {
     ethereum?: Eip1193Like & {
       providers?: unknown[];
