@@ -46,7 +46,7 @@ Environment variables (see `.env.example`):
 | `ORBITPORT_CLIENT_ID` | path B (preferred) | + `ORBITPORT_CLIENT_SECRET` + `KMS_KEY_ID` → **`KmsSigner`**; revoke txs call `sdk.kms.sign` with `messageType: "DIGEST"` |
 | `GUARDIAN_PRIVATE_KEY` | path A | `0x`-prefixed 32-byte hex → **`LocalSigner`** when KMS path is incomplete, or when `GUARDIAN_FORCE_LOCAL_SIGNER=1` forces local signing even if Orbitport is configured |
 | `GUARDIAN_FORCE_LOCAL_SIGNER` | no | Set to `1` to use `GUARDIAN_PRIVATE_KEY` for the primary signer while still having Orbitport vars in `.env` (e.g. Anvil smoke + creds present) |
-| `ARGUS_TELEMETRY_SECRET` | no | Shared secret; must match signal-api `ARGUS_TELEMETRY_SECRET` so `POST /telemetry` accepts guardian lines (e.g. “Signed via Space KMS ✓” in the dashboard feed) |
+| `ARGUS_TELEMETRY_SECRET` | no | Shared secret; must match signal-api `ARGUS_TELEMETRY_SECRET` so `POST /telemetry` accepts guardian lines. With KMS, the feed shows a **startup** “Guardian signed via Space KMS ✓ — KMS signer online…” line plus each **revoke** line from `notifyGuardianRevoke`. |
 
 If neither signer path is fully configured the guardian errors at
 startup.

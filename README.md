@@ -18,6 +18,30 @@ Built for **ETHPrague 2026**.
 
 See [`architecture-vision.md`](./architecture-vision.md) for the full design.
 
+## Dashboard screenshots
+
+Live UI captures for judges and for **Devfolio** (ETHPrague gallery); originals are committed under [`assets/devfolio/`](./assets/devfolio/).
+
+**User view** — demo allowances, on-chain agent registry (incl. KMS-attested guardian), ENS CCIP-read “resolve score”.
+
+![Argus dashboard — User view](./assets/devfolio/dashboard-user-view.png)
+
+**Admin view** — contributor queue, full agent registry with role filters.
+
+![Argus dashboard — Admin view](./assets/devfolio/dashboard-admin-view.png)
+
+**Scout view** — intel submission, social agents, live consensus feed (signals → score → guardian trigger).
+
+![Argus dashboard — Scout view and live feed](./assets/devfolio/dashboard-scout-feed.png)
+
+**Scout view** — Reddit/X social polling agent deploy panel.
+
+![Argus dashboard — Social scout agent](./assets/devfolio/dashboard-scout-agent.png)
+
+**Connect** — Sepolia wallet entry.
+
+![Argus dashboard — Connect wallet landing](./assets/devfolio/dashboard-connect-landing.png)
+
 ## Repo layout
 
 ```

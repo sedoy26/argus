@@ -203,7 +203,7 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 | **Runtime-configurable API base** without rebuild | Already partially addressed via `localStorage` overrides; could add a small settings modal (with warnings). |
 | **E2E tests** (Playwright) | Catch proxy misconfigurations and wallet mocks. |
 | **Contract cards from registry** | Dashboard already reads **ArgusRegistry** on Sepolia; expand to full agent explorer. |
-| **User-facing ENS resolution demo** | Wire a public client + live CCIP read in the UI for the exact `0x…risks…` name used on Sepolia. |
+| **User-facing ENS resolution demo** | Scout dashboard contract detail: **Load ENS risk record** calls gateway `GET /preview/:addr` and shows text-record keys (same mapping as CCIP-Read). Full live `eth_call` CCIP verification in-browser remains optional. |
 | **Recovery vault** | Mentioned in vision / root README; implement when fund-recovery story is needed. |
 
 ### 5.4 TEE / hybrid ergonomics

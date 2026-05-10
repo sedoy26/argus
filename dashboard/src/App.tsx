@@ -198,6 +198,8 @@ interface RiskState {
   envelope?: ConsensusEnvelope;
   preview?: GatewayPreview | null;
   error?: string;
+  /** Last error when loading gateway `/preview` only. */
+  previewErr?: string;
   fetchedAt: number;
 }
 
@@ -207,10 +209,52 @@ function useRisks(addresses: string[]) {
   const refetchAll = useCallback(() => {
     addresses.forEach((addr) => {
       void Promise.all([getRisk(addr), getPreview(addr)]).then(
-        ([envelope, preview]) => setRisks((r) => ({ ...r, [addr]: { envelope, preview, fetchedAt: Date.now() } })),
+        ([envelope, preview]) =>
+          setRisks((r) => ({
+            ...r,
+            [addr]: {
+              ...r[addr],
+              envelope,
+              preview,
+              previewErr: undefined,
+              error: undefined,
+              fetchedAt: Date.now(),
+            },
+          })),
         (err) => setRisks((r) => ({ ...r, [addr]: { ...r[addr], error: (err as Error).message, fetchedAt: Date.now() } })),
       );
     });
+  }, [addresses]);
+
+  /** Load ENS gateway `GET /preview/:addr` (human-readable text records + envelope). */
+  const refetchPreview = useCallback(async (addrRaw: string) => {
+    const raw = addrRaw.trim();
+    if (!ADDR_RE.test(raw)) return;
+    const key =
+      addresses.find((a) => a.trim().toLowerCase() === raw.toLowerCase())?.trim() ?? raw;
+    try {
+      const preview = await getPreview(raw.toLowerCase());
+      setRisks((r) => {
+        const prev = r[key] ?? { fetchedAt: 0 };
+        return {
+          ...r,
+          [key]: {
+            ...prev,
+            preview,
+            previewErr: preview ? undefined : 'Gateway returned empty preview (check VITE_GATEWAY_URL / resolver health)',
+            fetchedAt: Date.now(),
+          },
+        };
+      });
+    } catch (e) {
+      setRisks((r) => {
+        const prev = r[key] ?? { fetchedAt: 0 };
+        return {
+          ...r,
+          [key]: { ...prev, previewErr: (e as Error).message ?? 'preview failed', fetchedAt: Date.now() },
+        };
+      });
+    }
   }, [addresses]);
 
   useEffect(() => {
@@ -219,7 +263,7 @@ function useRisks(addresses: string[]) {
     return () => clearInterval(t);
   }, [refetchAll]);
 
-  return { risks, refetchAll };
+  return { risks, refetchAll, refetchPreview };
 }
 
 function useEvents(refreshKey: number) {
@@ -559,10 +603,10 @@ function LandingPage({ onConnect }: { onConnect: () => Promise<void> }) {
   return (
     <div className="relative min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center px-6 py-16 overflow-hidden">
       <AppBackdrop />
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-xl">
         <div
           ref={cardRef}
-          className="glass-surface glass-landing-card relative overflow-hidden px-8 py-10 text-center space-y-7 motion-safe:hover:-translate-y-0.5"
+          className="glass-surface glass-landing-card relative overflow-x-auto overflow-y-hidden px-8 py-10 text-center space-y-7 motion-safe:hover:-translate-y-0.5 [scrollbar-width:thin]"
           onMouseMove={onLandingCardMove}
           onMouseEnter={onLandingCardEnter}
           onMouseLeave={onLandingCardLeave}
@@ -576,11 +620,18 @@ function LandingPage({ onConnect }: { onConnect: () => Promise<void> }) {
               </h1>
               <p className="mt-1 text-xs uppercase tracking-[0.2em] text-(--color-argus-gold-dim)">hundred-eyed guardian</p>
             </div>
-            <p className="text-sm text-(--color-argus-muted) leading-relaxed text-left">
-              In myth, Argus never slept — a hundred eyes, none ever closed. Our network doesn&apos;t sleep either.
-              Independent watchers scan every contract you&apos;ve touched, verified by tamper-proof code no one controls.
-              The moment something turns dangerous, your wallet is already protected.
-            </p>
+            <div className="text-sm text-(--color-argus-muted) leading-relaxed text-center space-y-2.5">
+              <p className="whitespace-nowrap">
+                In myth, Argus never slept — a hundred eyes, none ever closed.
+              </p>
+              <p className="text-balance">
+                Our network doesn&apos;t sleep either. Independent watchers scan every contract you&apos;ve touched,
+                verified by tamper-proof code no one controls.
+              </p>
+              <p className="whitespace-nowrap">
+                The moment something turns dangerous, your wallet is already protected.
+              </p>
+            </div>
             <p className="text-sm font-medium text-(--color-argus-text)/90 leading-snug">
               Connect your wallet. See what Argus sees.
             </p>
@@ -1155,9 +1206,21 @@ function Field({ label, children, wide }: { label: string; children: React.React
   );
 }
 
-function DetailPanel({ addr, state }: { addr: string; state: RiskState | undefined }) {
+function DetailPanel({
+  addr,
+  state,
+  onFetchEnsRecord,
+}: {
+  addr: string;
+  state: RiskState | undefined;
+  onFetchEnsRecord: () => Promise<void>;
+}) {
   const env = state?.envelope;
   const records = state?.preview?.records ?? {};
+  const [ensBusy, setEnsBusy] = useState(false);
+  const ensName =
+    ADDR_RE.test(addr.trim().toLowerCase()) ? normalize(`${addr.trim().toLowerCase()}.${ARGUS_ENS_RISK_PARENT}`) : '';
+
   return (
     <section className="glass-surface glass-surface-hover p-5 space-y-5 motion-safe:hover:-translate-y-0.5">
       <div>
@@ -1181,19 +1244,59 @@ function DetailPanel({ addr, state }: { addr: string; state: RiskState | undefin
           <div className="mono text-zinc-200">{env.summary}</div>
         </div>
       )}
-      {Object.keys(records).length > 0 && (
-        <div className="text-xs">
-          <div className="text-(--color-argus-muted) uppercase tracking-wider mb-1">ENS records (gateway)</div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            {Object.entries(records).filter(([, v]) => v).map(([k, v]) => (
-              <div key={k} className="flex gap-2">
-                <span className="text-(--color-argus-muted) min-w-[120px]">{k}</span>
-                <span className="mono break-all">{v}</span>
-              </div>
-            ))}
+      <div className="rounded-xl border border-sky-500/25 bg-sky-950/20 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-sky-200/95">ENS risk record</div>
+            <p className="text-[10px] text-(--color-argus-muted) mt-1 leading-relaxed">
+              Gateway <span className="mono">GET /preview/:addr</span> — same text keys served over CCIP-Read for{' '}
+              <span className="mono text-sky-200/90">{ensName || '—'}</span>.
+            </p>
           </div>
+          <button
+            type="button"
+            disabled={ensBusy}
+            onClick={() => {
+              void (async () => {
+                setEnsBusy(true);
+                try {
+                  await onFetchEnsRecord();
+                } finally {
+                  setEnsBusy(false);
+                }
+              })();
+            }}
+            className="shrink-0 px-3 py-1.5 rounded-lg bg-sky-600/85 hover:bg-sky-500/85 text-white text-[11px] font-semibold disabled:opacity-40"
+          >
+            {ensBusy ? 'Loading…' : 'Load ENS risk record'}
+          </button>
         </div>
-      )}
+        {state?.previewErr && (
+          <div className="text-[11px] text-rose-400">{state.previewErr}</div>
+        )}
+        {Object.keys(records).length > 0 ? (
+          <div className="text-xs space-y-2">
+            <div className="text-[10px] text-(--color-argus-muted) uppercase tracking-wider">text() keys → values</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+              {Object.entries(records)
+                .filter(([, v]) => v != null && String(v).length > 0)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([k, v]) => (
+                  <div key={k} className="flex flex-col sm:flex-row sm:gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-1.5">
+                    <span className="text-sky-300/90 font-mono text-[10px] shrink-0">{k}</span>
+                    <span className="mono break-all text-zinc-200">{String(v)}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : (
+          !ensBusy && (
+            <p className="text-[11px] text-(--color-argus-muted)">
+              Click the button to pull the resolver&apos;s text records from the Argus ENS gateway (no on-chain tx).
+            </p>
+          )
+        )}
+      </div>
     </section>
   );
 }
@@ -2347,7 +2450,7 @@ export function App() {
   const [selected, setSelected] = useState<string | undefined>(watched[0]);
   const { data: health } = usePoll(getHealth, 5_000, []);
   const { data: boot } = usePoll(getBoot, 5_000, []);
-  const { risks, refetchAll } = useRisks(watched);
+  const { risks, refetchAll, refetchPreview } = useRisks(watched);
   const [eventsTick, setEventsTick] = useState(0);
   const events = useEvents(eventsTick);
 
@@ -2687,7 +2790,13 @@ export function App() {
                 <ContractCard key={addr} addr={addr} state={risks[addr]} onSelect={() => setSelected(addr)} isSelected={selected === addr} />
               ))}
             </div>
-            {selected && <DetailPanel addr={selected} state={risks[selected]} />}
+            {selected && (
+              <DetailPanel
+                addr={selected}
+                state={risks[selected]}
+                onFetchEnsRecord={() => refetchPreview(selected)}
+              />
+            )}
           </section>
         </main>
       ) : role === 'user' ? (

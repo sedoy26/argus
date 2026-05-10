@@ -12,6 +12,7 @@ import { createPublicClient, http, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 import { Guardian, type GuardianConfig } from './guardian.ts';
 import { signerFromEnv, LocalSigner } from './signer.ts';
+import { notifyArgusTelemetry } from './telemetry.ts';
 import type { ProtectedWallet, Score } from './types.ts';
 
 const ENS_ROOT = Bun.env.ARGUS_ENS_ROOT ?? 'argus-security.eth';
@@ -83,6 +84,17 @@ function envScore(name: string, dflt: Score): Score {
 
 async function main(): Promise<void> {
   const signer = await signerFromEnv();
+  if (signer.signingBackend === 'kms') {
+    void notifyArgusTelemetry(
+      'Guardian signed via Space KMS ✓ — KMS signer online (EIP-1559 digest signing)',
+      {
+        kind: 'guardian_kms_ready',
+        signed_via: 'space_kms',
+        space_kms_signed: true,
+        address: signer.address,
+      },
+    );
+  }
   console.log(`[guardian] identity      ${AGENT_ENS_NAME}`);
 
   // --- ENS bootstrap ---
