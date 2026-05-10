@@ -1429,9 +1429,9 @@ function RoleApplicationsRail({
 
   if (access.privileged) {
     return (
-      <div className="glass-surface border-emerald-500/20 p-3 space-y-1.5">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-200/90">Special roles</div>
-        <p className="text-[10px] text-(--color-argus-muted) leading-snug">
+      <div className="glass-surface border-emerald-500/20 p-4 space-y-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/90">Special roles</div>
+        <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
           This wallet is <span className="text-emerald-300/95">privileged</span> — Scout / Admin are already available. No enrollment request needed.
         </p>
       </div>
@@ -1476,22 +1476,22 @@ function RoleApplicationsRail({
 
   return (
     <>
-      <div className="glass-surface border-violet-500/20 p-3 space-y-2.5">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-200/90">Special roles</div>
+      <div className="glass-surface border-violet-500/20 p-4 space-y-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-violet-200/90">Special roles</div>
         {!access.authStrict && (
-          <p className="text-[10px] text-sky-200/90 leading-snug rounded-lg border border-sky-500/25 bg-sky-500/10 px-2 py-1.5">
+          <p className="text-[11px] text-sky-200/90 leading-relaxed rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2">
             Open-access deployment — requests still create a <span className="font-medium text-sky-100">pending</span> row for admins to review when they use the Admin tab.
           </p>
         )}
-        <p className="text-[10px] text-(--color-argus-muted) leading-snug">
+        <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
           Tap a role, add a short pitch — admins see it as <span className="text-violet-300">pending</span> in their queue.
         </p>
         {anyPending && (
-          <div className="text-[10px] rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5 text-amber-100/95">
+          <div className="text-[11px] rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-amber-100/95">
             Pending: <span className="font-semibold capitalize">{pendingRole ?? '—'}</span>
           </div>
         )}
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {(['scout', 'guardian', 'watcher'] as const).map((r) => {
             const meta = ENROLL_ROLE_META[r];
             const approved = hasRole(r);
@@ -1508,7 +1508,7 @@ function RoleApplicationsRail({
                   setToast('');
                   setOpen(r);
                 }}
-                className={`w-full flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition ${
+                className={`w-full flex items-center gap-2.5 rounded-full border px-3 py-2 text-left text-sm font-medium transition ${
                   approved
                     ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200 cursor-default'
                     : isPendingHere
@@ -1518,19 +1518,19 @@ function RoleApplicationsRail({
                         : 'border-violet-500/35 bg-violet-600/15 text-violet-100 hover:bg-violet-600/25 hover:border-violet-400/50'
                 }`}
               >
-                <span className="shrink-0 text-sm">{meta.icon}</span>
+                <span className="shrink-0 text-base">{meta.icon}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{meta.label}</span>
-                  <span className="block text-[9px] font-normal opacity-70 truncate">{meta.short}</span>
+                  <span className="block text-[10px] font-normal opacity-70 truncate">{meta.short}</span>
                 </span>
-                {approved && <span className="shrink-0 text-[10px] text-emerald-300">✓</span>}
-                {isPendingHere && <span className="shrink-0 text-[10px] text-amber-300">…</span>}
+                {approved && <span className="shrink-0 text-[11px] text-emerald-300">✓</span>}
+                {isPendingHere && <span className="shrink-0 text-[11px] text-amber-300">…</span>}
               </button>
             );
           })}
         </div>
         {toast && (
-          <p className={`text-[10px] leading-snug ${toast.includes('fail') || toast.toLowerCase().includes('error') ? 'text-rose-400' : 'text-emerald-400/90'}`}>
+          <p className={`text-[11px] leading-snug ${toast.includes('fail') || toast.toLowerCase().includes('error') ? 'text-rose-400' : 'text-emerald-400/90'}`}>
             {toast}
           </p>
         )}
@@ -1538,7 +1538,7 @@ function RoleApplicationsRail({
 
       {open && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-5 sm:p-6 bg-black/55 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="role-apply-title"
@@ -1547,39 +1547,39 @@ function RoleApplicationsRail({
           }}
         >
           <div
-            className="w-full max-w-md glass-surface border-violet-500/30 p-5 space-y-3 shadow-2xl"
+            className="w-full max-w-lg glass-surface border-violet-500/30 p-6 sm:p-7 space-y-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 id="role-apply-title" className="text-sm font-semibold text-violet-100">
+                <h2 id="role-apply-title" className="text-base font-semibold text-violet-100">
                   Apply as {ENROLL_ROLE_META[open].label}
                 </h2>
-                <p className="text-[11px] text-(--color-argus-muted) mt-0.5">{ENROLL_ROLE_META[open].hint}</p>
+                <p className="text-sm text-(--color-argus-muted) mt-1 leading-relaxed">{ENROLL_ROLE_META[open].hint}</p>
               </div>
               <button
                 type="button"
-                className="text-(--color-argus-muted) hover:text-white text-lg leading-none px-1"
+                className="text-(--color-argus-muted) hover:text-white text-xl leading-none px-1.5"
                 onClick={() => setOpen(null)}
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] uppercase text-(--color-argus-muted)">Why you + links (min 12 chars)</label>
+            <div className="space-y-1.5">
+              <label className="text-[11px] uppercase tracking-wide text-(--color-argus-muted)">Why you + links (min 12 chars)</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                rows={5}
+                rows={6}
                 placeholder="Background, relevant accounts, what you’ll contribute…"
-                className="w-full bg-(--color-argus-bg) border border-(--color-argus-border) rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                className="w-full min-h-[8.5rem] bg-(--color-argus-bg) border border-(--color-argus-border) rounded-lg px-3.5 py-2.5 text-sm resize-y focus:outline-none focus:ring-1 focus:ring-violet-500/50"
               />
             </div>
-            <div className="flex gap-2 justify-end pt-1">
+            <div className="flex gap-2.5 justify-end pt-1">
               <button
                 type="button"
-                className="px-3 py-1.5 text-xs rounded-lg border border-(--color-argus-border) text-(--color-argus-muted) hover:text-(--color-argus-text)"
+                className="px-4 py-2 text-sm rounded-lg border border-(--color-argus-border) text-(--color-argus-muted) hover:text-(--color-argus-text)"
                 onClick={() => setOpen(null)}
               >
                 Cancel
@@ -1588,12 +1588,12 @@ function RoleApplicationsRail({
                 type="button"
                 disabled={busy || description.trim().length < 12}
                 onClick={() => submit(open)}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-violet-600/85 hover:bg-violet-500/85 text-white disabled:opacity-40"
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-violet-600/85 hover:bg-violet-500/85 text-white disabled:opacity-40"
               >
                 {busy ? 'Signing…' : 'Sign & submit'}
               </button>
             </div>
-            <p className="text-[10px] text-(--color-argus-muted)">One-time nonce + wallet signature — same flow as the admin moderation queue.</p>
+            <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">One-time nonce + wallet signature — same flow as the admin moderation queue.</p>
           </div>
         </div>
       )}
@@ -1743,7 +1743,7 @@ function UserView({
     : 'border-emerald-500/30 bg-emerald-500/5';
 
   return (
-    <div className={showRoleRail ? 'grid gap-6 md:grid-cols-[minmax(0,11rem)_1fr] lg:grid-cols-[minmax(0,13.5rem)_1fr] items-start' : 'space-y-6'}>
+    <div className={showRoleRail ? 'grid gap-6 md:grid-cols-[minmax(0,13rem)_1fr] lg:grid-cols-[minmax(0,15.5rem)_1fr] items-start' : 'space-y-6'}>
       {showRoleRail && (
         <aside className="space-y-3 md:sticky md:top-24 lg:top-28 order-2 md:order-1 self-start">
           <RoleApplicationsRail wallet={wallet} access={access} onDone={onAccessRefresh} />
