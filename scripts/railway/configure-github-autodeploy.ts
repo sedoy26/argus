@@ -115,6 +115,11 @@ function railwayAuthHeaders(): Record<string, string> {
   return { 'content-type': 'application/json' };
 }
 
+function isDeploymentTriggerLimitError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /single deployment trigger|only a single deployment trigger/i.test(msg);
+}
+
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const headers = railwayAuthHeaders();
   if (!headers.authorization && !headers['Project-Access-Token']) {
@@ -308,15 +313,27 @@ async function main() {
       const wp = Array.isArray(row.watchPatterns) && row.watchPatterns.length > 0 ? ` + watchPatterns(${row.watchPatterns.length})` : '';
       console.log(`  serviceInstanceUpdate (rootDirectory + railwayConfigFile${wp}): ok`);
 
-      await gql(M_AUTODEPLOY, {
-        input: {
-          enabled: true,
-          projectId: proj.id,
-          environmentId: activeEnv.id,
-          serviceId: sid,
-        },
-      });
-      console.log('  serviceInstanceAutoDeployUpdate: ok');
+      // `serviceInstanceUpdate` often queues a deploy; enabling autodeploy right
+      // after can hit "Only a single deployment trigger…" — treat as benign.
+      try {
+        await gql(M_AUTODEPLOY, {
+          input: {
+            enabled: true,
+            projectId: proj.id,
+            environmentId: activeEnv.id,
+            serviceId: sid,
+          },
+        });
+        console.log('  serviceInstanceAutoDeployUpdate: ok');
+      } catch (e) {
+        if (isDeploymentTriggerLimitError(e)) {
+          console.log('  serviceInstanceAutoDeployUpdate: skipped (deploy already queued; autodeploy likely unchanged)');
+        } else {
+          throw e;
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 2000));
 
       if (doDeploy) {
         await gql(M_DEPLOY, { serviceId: sid, environmentId: activeEnv.id });
