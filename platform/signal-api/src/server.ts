@@ -47,6 +47,7 @@ import {
   stopSocialAgent,
   type IntelCorroborationResult,
 } from './socialAgents.ts';
+import { runApifyActorSync } from './apifyActor.ts';
 
 // ── cTRNG (SpaceComputer cosmic true random) ──────────────────────────────────
 // Used to generate hardware-attested nonces for TEE attestation proofs.
@@ -323,29 +324,40 @@ async function handleIntel(req: Request): Promise<Response> {
 
     // ── Twitter: try Apify, fall back to provided text ────────────────────
     else {
-      const apifyToken = Bun.env.APIFY_TOKEN ?? '';
       emit('info', `Scout fetching tweet via Apify…`, { tweetUrl: sourceUrl });
 
       const handleMatch = sourceUrl.match(/x\.com\/([^/]+)\/status\//i) ?? sourceUrl.match(/twitter\.com\/([^/]+)\/status\//i);
       const tweetAuthor = handleMatch?.[1]?.toLowerCase() ?? '';
       let apifyOk = false;
 
-      if (apifyToken) {
+      if (Bun.env.APIFY_X402_PRIVATE_KEY || Bun.env.APIFY_TOKEN) {
         try {
-          const apifyRes = await fetch(
-            'https://api.apify.com/v2/acts/automation-lab~twitter-scraper/run-sync-get-dataset-items?clean=1',
-            {
-              method: 'POST',
-              headers: { 'content-type': 'application/json', authorization: `Bearer ${apifyToken}` },
-              body: JSON.stringify({ startUrls: [sourceUrl], mode: 'tweets', maxItems: 3 }),
-            },
-          );
-          if (apifyRes.ok) {
-            const tweets = (await apifyRes.json()) as Array<Record<string, unknown>>;
-            const fetched = tweets.map((t) => String(t['text'] ?? t['fullText'] ?? '')).filter(Boolean).join('\n');
-            if (fetched.trim()) { intelText = fetched; apifyOk = true; }
+          const { rows: tweets, meta } = await runApifyActorSync('automation-lab~twitter-scraper', {
+            startUrls: [sourceUrl],
+            mode: 'tweets',
+            maxItems: 3,
+          });
+          const fetched = tweets.map((t) => String(t['text'] ?? t['fullText'] ?? '')).filter(Boolean).join('\n');
+          if (fetched.trim()) {
+            intelText = fetched;
+            apifyOk = true;
           }
-        } catch { /* fall through */ }
+          if (meta.usedX402) {
+            emit(
+              'info',
+              meta.x402PaymentTx
+                ? `Scout paid Apify via X402 — settlement tx ${String(meta.x402PaymentTx).slice(0, 14)}… ✓`
+                : 'Scout used Apify X402 (USDC on Base) — request completed ✓',
+              {
+                x402: true,
+                apifySettlementTx: meta.x402PaymentTx ?? null,
+                x402Network: meta.x402Network ?? 'eip155:8453',
+              },
+            );
+          }
+        } catch {
+          /* fall through */
+        }
       }
 
       source = `twitter:${tweetAuthor}:${sourceUrl}`;
@@ -399,9 +411,18 @@ async function handleSimulateTx(req: Request): Promise<Response> {
       const sData = await sRes.json() as { match?: string | null; runtimeMatch?: string | null };
       // null means unverified (HTTP 200 with null fields)
       sourcifyMatch = sData.match ?? sData.runtimeMatch ?? null;
+      emit('info', `Sourcify.dev verification for ${to.slice(0, 10)}…`, {
+        sourcifyChecked: true,
+        sourcifyMatch,
+        sourcifyVerificationUrl: `https://sourcify.dev/server/v2/contract/${chainId}/${to}`,
+      });
     } else {
       // 404 = contract not found on Sourcify = not verified
       sourcifyMatch = null;
+      emit('info', `Sourcify.dev lookup HTTP ${sRes.status} for ${to.slice(0, 10)}…`, {
+        sourcifyChecked: true,
+        sourcifyVerificationUrl: `https://sourcify.dev/server/v2/contract/${chainId}/${to}`,
+      });
     }
   } catch { /* Sourcify unreachable — fall through to score check */ }
 
@@ -609,6 +630,18 @@ function handleSocialAgentDelete(url: URL): Response {
   return json({ ok: true });
 }
 
+/** Best-effort ingest from guardian / other agents (Space KMS demo line). */
+async function handleTelemetry(req: Request): Promise<Response> {
+  const secret = Bun.env.ARGUS_TELEMETRY_SECRET ?? '';
+  if (!secret || req.headers.get('x-argus-telemetry') !== secret) {
+    return bad('telemetry unauthorized', 401);
+  }
+  const body = (await readJson(req)) as { message?: string; detail?: Record<string, unknown> };
+  if (!body.message || typeof body.message !== 'string') return bad('message required', 400);
+  emit('info', body.message, body.detail ?? {});
+  return json({ ok: true });
+}
+
 registerSocialIntelRunner(runIntelCorroborationFromText);
 
 const server = Bun.serve({
@@ -621,7 +654,7 @@ const server = Bun.serve({
     const corsHeaders = {
       'access-control-allow-origin': '*',
       'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
-      'access-control-allow-headers': 'content-type',
+      'access-control-allow-headers': 'content-type, x-argus-telemetry',
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
     try {
@@ -631,6 +664,7 @@ const server = Bun.serve({
       else if (req.method === 'POST' && path === '/signals') res = await handleSubmit(req);
       else if (req.method === 'POST' && path === '/intel') res = await handleIntel(req);
       else if (req.method === 'POST' && path === '/simulate-tx') res = await handleSimulateTx(req);
+      else if (req.method === 'POST' && path === '/telemetry') res = await handleTelemetry(req);
       else if (req.method === 'GET' && path === '/auth/nonce') res = handleAuthNonce(url);
       else if (req.method === 'GET' && path === '/access') res = handleAccess(url);
       else if (req.method === 'POST' && path === '/enrollment') res = await handleEnrollmentApply(req);

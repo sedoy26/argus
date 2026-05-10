@@ -42,9 +42,10 @@ Environment variables (see `.env.example`):
 | `GUARDIAN_TOKENS` | yes | comma-separated ERC-20 token addresses |
 | `GUARDIAN_THRESHOLD` | no | default `CRITICAL`; one of NONE/YELLOW/ORANGE/RED/CRITICAL |
 | `GUARDIAN_POLL_MS` | no | default `5000` |
-| `ARGUS_API` | no | default `http://127.0.0.1:8787` |
+| `ARGUS_API` | no | signal-api base URL (default `http://127.0.0.1:8787`); risk polling and optional `POST …/telemetry` use the same host |
 | `GUARDIAN_PRIVATE_KEY` | path A | `0x`-prefixed 32-byte hex; selects `LocalSigner` |
 | `ORBITPORT_CLIENT_ID` | path B | + `ORBITPORT_CLIENT_SECRET` + `KMS_KEY_ID`; selects `KmsSigner` |
+| `ARGUS_TELEMETRY_SECRET` | no | Shared secret; must match signal-api `ARGUS_TELEMETRY_SECRET` so `POST /telemetry` accepts guardian lines (e.g. “Signed via Space KMS ✓” in the dashboard feed) |
 
 If neither signer path is fully configured the guardian errors at
 startup.

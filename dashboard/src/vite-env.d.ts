@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_SIGNAL_API?: string;
   /** Production: full origin of ens-resolver gateway. Dev: omit — uses `/gw` proxy. */
   readonly VITE_GATEWAY_URL?: string;
+  /** ENS wildcard parent for `[addr].<parent>` CCIP demo (default risks.argus-security.eth). */
+  readonly VITE_ARGUS_ENS_PARENT?: string;
 }
 
 interface ImportMeta {

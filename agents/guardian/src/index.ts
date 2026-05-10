@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     rpcUrl: Bun.env.RPC_URL ?? 'http://127.0.0.1:8545',
   };
 
-  console.log(`[guardian] signer        ${signer.address}`);
+  console.log(`[guardian] signer        ${signer.address} (${signer.signingBackend === 'kms' ? 'Space KMS / Orbitport' : 'local private key'})`);
   console.log(`[guardian] spender       ${config.spender}`);
   console.log(`[guardian] tokens        ${config.tokens.join(', ')}`);
   console.log(`[guardian] threshold     ${config.threshold}`);

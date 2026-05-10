@@ -1,4 +1,5 @@
 // SWAT-001 — Approval-abuse via arbitrary external call.
+// SWAT-002 — Authentication via tx.origin (phishing / proxy bypass class).
 //
 // Pattern: a function takes an address and a bytes parameter and
 // performs `<address>.call(<bytes>)` (or `.delegatecall` /
@@ -16,7 +17,7 @@
 
 import type { SolFile } from './sourcify.ts';
 
-export type ThreatType = 'SWAT-001';
+export type ThreatType = 'SWAT-001' | 'SWAT-002';
 
 export interface Detection {
   threatType: ThreatType;
@@ -48,8 +49,41 @@ export function detectAll(files: SolFile[]): DetectorReport {
   const detections: Detection[] = [];
   for (const f of files) {
     detections.push(...detectInFile(f));
+    detections.push(...detectTxOriginMisuse(f));
   }
   return { detections, scannedFiles: files.map((f) => f.name) };
+}
+
+/** SWAT-002 — `tx.origin` used as an authorization primitive (anti-pattern). */
+function detectTxOriginMisuse(file: SolFile): Detection[] {
+  const stripped = stripComments(file.content);
+  if (!/\btx\.origin\b/.test(stripped)) return [];
+  // Ignore comments-only: stripComments already removed // and /* */
+  const out: Detection[] = [];
+  for (const fn of iterateFunctions(stripped)) {
+    if (!/\btx\.origin\b/.test(fn.body)) continue;
+    out.push({
+      threatType: 'SWAT-002',
+      file: file.name,
+      function: fn.name,
+      signature: `${fn.name}(${normalizeParams(fn.params)})`,
+      bodySnippet: extractSnippet(fn.body),
+      callKind: 'call',
+      accessControlled: looksAccessControlled(fn.modifiers, fn.body),
+    });
+  }
+  if (out.length === 0) {
+    out.push({
+      threatType: 'SWAT-002',
+      file: file.name,
+      function: '(file)',
+      signature: 'tx.origin reference',
+      bodySnippet: 'tx.origin',
+      callKind: 'call',
+      accessControlled: false,
+    });
+  }
+  return out;
 }
 
 function detectInFile(file: SolFile): Detection[] {

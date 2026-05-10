@@ -36,6 +36,7 @@ import type { Signer } from './types.ts';
 
 export class LocalSigner implements Signer {
   readonly address: Address;
+  readonly signingBackend = 'local' as const;
   private readonly account: ReturnType<typeof privateKeyToAccount>;
 
   constructor(privateKey: Hex) {
@@ -67,6 +68,7 @@ export interface KmsSignerOptions {
 
 export class KmsSigner implements Signer {
   readonly address: Address;
+  readonly signingBackend = 'kms' as const;
   private readonly sdk: OrbitportSDK;
   private readonly keyId: string;
 

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPublicClient, http, type Abi } from 'viem';
+import { getEnsText } from 'viem/actions';
+import { normalize } from 'viem/ens';
 import { sepolia } from 'viem/chains';
 import {
   buildAdminModerationMessage,
@@ -87,6 +89,10 @@ const ADDON_SOCIAL_SCOUT = 'argus.addon.socialScout';
 const WATCHED_KEY = 'argus.watched.v2';
 const DEMO_CONTRACT = '0x3b38fe80891ec608829e941ef965e1c96d3460d6';
 const DEMO_CONTRACT_NAME = 'FakeSwapNet';
+
+/** Wildcard parent for `[addr].<parent>` ENS CCIP (set to your deployed risks zone). */
+const ARGUS_ENS_RISK_PARENT =
+  import.meta.env.VITE_ARGUS_ENS_PARENT ?? 'risks.argus-security.eth';
 
 const DEFAULT_WATCHED: string[] = [DEMO_CONTRACT];
 
@@ -300,6 +306,29 @@ function EventExplainer({ ev }: { ev: ArgusEvent }) {
       lines.push('The signal-api service (or TEE bridge) started or reconnected. Boot metadata is shown for audit trails.');
       break;
     }
+    case 'info': {
+      if (d.x402) {
+        lines.push(
+          'Apify X402: the scout paid for this actor run with USDC on Base (ERC-3009 TransferWithAuthorization).',
+          d.apifySettlementTx
+            ? `Settlement reference: ${String(d.apifySettlementTx).slice(0, 28)}…`
+            : 'Payment completed per Apify X402 headers (see Apify console for settlement tx when present).',
+        );
+      } else if (d.space_kms_signed || d.signed_via === 'space_kms') {
+        lines.push(
+          'Guardian revocation was signed inside SpaceComputer Orbitport KMS — the operator never saw the raw secp256k1 key.',
+          'Configure ORBITPORT_CLIENT_ID, ORBITPORT_CLIENT_SECRET, and KMS_KEY_ID on the guardian; set ARGUS_TELEMETRY_SECRET on signal-api to ingest this line into the feed.',
+        );
+      } else if (d.sourcifyVerificationUrl) {
+        lines.push(
+          `Sourcify.dev contract API: ${String(d.sourcifyVerificationUrl)}`,
+          'Full / partial matches include creation bytecode metadata and ABI — Argus uses that structured data, not only raw source text.',
+        );
+      } else {
+        lines.push('Platform activity. See the message above for the exact operation.');
+      }
+      break;
+    }
     default: {
       lines.push('Platform activity. See the message above for the exact operation.');
     }
@@ -393,6 +422,23 @@ function EventRow({ ev }: { ev: ArgusEvent }) {
             </div>
             );
           })()}
+          {ev.kind === 'info' && (d.space_kms_signed === true || d.signed_via === 'space_kms') && (
+            <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-400/35 px-2 py-0.5 text-[10px] font-semibold text-emerald-100">
+              Signed via Space KMS ✓
+            </div>
+          )}
+          {ev.kind === 'info' && d.x402 === true && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex rounded-full bg-amber-500/15 border border-amber-400/35 px-2 py-0.5 text-[10px] font-semibold text-amber-50">
+                Apify X402 (USDC on Base) ✓
+              </span>
+              {typeof d.apifySettlementTx === 'string' && d.apifySettlementTx.length > 6 && (
+                <span className="mono text-[10px] text-(--color-argus-muted) truncate max-w-[200px]" title={String(d.apifySettlementTx)}>
+                  settlement {String(d.apifySettlementTx).slice(0, 20)}…
+                </span>
+              )}
+            </div>
+          )}
           {open && <EventExplainer ev={ev} />}
         </div>
       </div>
@@ -1024,7 +1070,7 @@ function BundlesCard({
       <div className="text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">Bundles &amp; add-ons</div>
       <div className="text-xs text-(--color-argus-muted) space-y-1">
         <p><span className="text-emerald-400 font-medium">Included for everyone:</span> Sourcify watcher agent — automated SWAT-style source checks land in the live feed without any toggle.</p>
-        <p><span className="text-amber-300 font-medium">Optional add-on:</span> Social URL scout (Reddit / X + Apify pipeline). Turn on here once you have <span className="font-medium">Scout</span> access so the Scout tab can use URL mode.</p>
+        <p><span className="text-amber-300 font-medium">Optional add-on:</span> Social URL scout (Reddit / X + Apify). Prefer <span className="font-medium">X402</span> (<code className="mono text-[10px]">APIFY_X402_PRIVATE_KEY</code> on signal-api) for Apify bounty flow; bearer <span className="mono text-[10px]">APIFY_TOKEN</span> still supported.</p>
       </div>
       <label className={`flex items-center gap-2 text-xs ${approvedScout ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
         <input
@@ -1042,6 +1088,155 @@ function BundlesCard({
       {!approvedScout && (
         <p className="text-[10px] text-(--color-argus-muted)">Request Scout access below — an admin must approve before this add-on applies.</p>
       )}
+    </div>
+  );
+}
+
+function UserWalletSnapshot({ score }: { score: Score }) {
+  const n = USER_APPROVALS.length;
+  const riskTier = SCORE_ORDER[score];
+  const atRiskCount = riskTier >= 3 ? n : riskTier >= 2 ? Math.min(1, n) : 0;
+  return (
+    <div className="glass-surface glass-surface-hover p-4 motion-safe:hover:-translate-y-0.5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-amber-200/90 mb-2">Your wallet — demo snapshot</div>
+      <p className="text-sm text-(--color-argus-text)">
+        <span className="font-semibold text-amber-100">{n}</span> active token allowance{n === 1 ? '' : 's'} on the demo contract{' '}
+        <span className="mono text-xs opacity-90">{DEMO_CONTRACT.slice(0, 8)}…</span>
+      </p>
+      <p className="text-sm mt-2 text-(--color-argus-muted)">
+        Argus risk for that contract:{' '}
+        <span className={`font-semibold ${riskTier >= 3 ? 'text-rose-300' : riskTier >= 2 ? 'text-amber-200' : 'text-emerald-300'}`}>{score}</span>
+        {atRiskCount > 0 ? (
+          <span className="text-rose-200/90"> — {atRiskCount} allowance{atRiskCount === 1 ? '' : 's'} flagged at elevated risk in this demo.</span>
+        ) : (
+          <span> — no demo allowances in the critical band for your current score.</span>
+        )}
+      </p>
+    </div>
+  );
+}
+
+function EnsCcipRiskLookup() {
+  const [addr, setAddr] = useState(DEMO_CONTRACT);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [score, setScore] = useState<string | null>(null);
+
+  const run = () => {
+    void (async () => {
+      setBusy(true);
+      setErr('');
+      setScore(null);
+      try {
+        const a = addr.trim().toLowerCase();
+        if (!ADDR_RE.test(a)) {
+          setErr('Enter a valid 0x address');
+          return;
+        }
+        const name = normalize(`${a}.${ARGUS_ENS_RISK_PARENT}`);
+        const gw =
+          import.meta.env.VITE_GATEWAY_URL?.replace(/\/$/, '') ??
+          (typeof window !== 'undefined' ? `${window.location.origin}/gw` : '');
+        const gatewayUrls = [`${gw}/lookup/{sender}/{data}.json`];
+        const text = await getEnsText(publicClient, {
+          name,
+          key: 'score',
+          gatewayUrls,
+        });
+        setScore(text ?? '(empty — name may not be wired on Sepolia)');
+      } catch (e) {
+        setErr((e as Error).message ?? 'ENS / CCIP resolution failed');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  return (
+    <div className="glass-surface glass-surface-hover p-4 space-y-3 motion-safe:hover:-translate-y-0.5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-sky-200/90">ENS CCIP-Read — live risk text record</div>
+      <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
+        Resolves <span className="mono">{`0x…${ARGUS_ENS_RISK_PARENT}`}</span> via viem + your Argus gateway (EIP-3668). Requires the wildcard name to use ArgusRiskResolver on Sepolia.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          value={addr}
+          onChange={(e) => setAddr(e.target.value)}
+          placeholder="0x contract address"
+          className="mono flex-1 bg-(--color-argus-bg) border border-(--color-argus-border) rounded-lg px-3 py-2 text-xs"
+        />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={run}
+          className="px-4 py-2 rounded-lg bg-sky-600/80 hover:bg-sky-500/80 text-white text-xs font-semibold disabled:opacity-40"
+        >
+          {busy ? 'Resolving…' : 'Resolve score'}
+        </button>
+      </div>
+      {err && <div className="text-[11px] text-rose-400">{err}</div>}
+      {score != null && (
+        <div className="text-sm">
+          <span className="text-(--color-argus-muted)">score text record: </span>
+          <span className="font-mono font-semibold text-sky-200">{score}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RegistryExplorerStrip() {
+  const [rows, setRows] = useState<RegistryAgent[]>([]);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const raw = await publicClient.readContract({
+          address: REGISTRY_ADDRESS,
+          abi: REGISTRY_ABI,
+          functionName: 'allAgents',
+        });
+        setRows(raw as RegistryAgent[]);
+      } catch (e) {
+        setErr((e as Error).message ?? 'registry read failed');
+      }
+    })();
+  }, []);
+
+  const active = rows.filter((a) => a.status === 1).slice(0, 8);
+
+  function trustLabel(a: RegistryAgent): string {
+    const s = `${a.specialty} ${a.ensName}`.toLowerCase();
+    if (s.includes('kms')) return 'KMS-attested';
+    if (Number(a.reputation) >= 90) return 'High trust';
+    return 'Registry';
+  }
+
+  return (
+    <div className="glass-surface glass-surface-hover p-4 space-y-3 motion-safe:hover:-translate-y-0.5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-violet-200/90">On-chain agent registry (Sepolia)</div>
+      {err && <div className="text-[11px] text-rose-400">{err}</div>}
+      {!err && active.length === 0 && (
+        <p className="text-xs text-(--color-argus-muted)">No active agents yet — deploy / seed ArgusRegistry.</p>
+      )}
+      <div className="grid sm:grid-cols-2 gap-2">
+        {active.map((a) => (
+          <div
+            key={a.addr}
+            className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className={`font-medium ${ROLE_COLOR[a.role] ?? 'text-zinc-300'}`}>{ROLE_LABEL[a.role] ?? `R${a.role}`}</span>
+              <span className="text-[10px] px-1.5 py-0 rounded bg-amber-500/15 text-amber-100 border border-amber-400/25">{trustLabel(a)}</span>
+            </div>
+            <div className="mono text-(--color-argus-muted) mt-1 truncate" title={a.addr}>{a.addr.slice(0, 12)}…{a.addr.slice(-6)}</div>
+            {a.ensName && <div className="mono text-violet-300/90 truncate mt-0.5" title={a.ensName}>{a.ensName}</div>}
+            <div className="text-(--color-argus-muted) mt-1">rep {String(a.reputation)} · signals {String(a.signalCount)}</div>
+            {a.specialty && <div className="text-[10px] text-zinc-500 mt-1 line-clamp-2">{a.specialty}</div>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1286,6 +1481,9 @@ function UserView({
 
   return (
     <div className="space-y-6">
+      <UserWalletSnapshot score={score} />
+      <RegistryExplorerStrip />
+      <EnsCcipRiskLookup />
       {wallet && (
         <BundlesCard
           approvedScout={approvedScout}

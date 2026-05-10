@@ -43,6 +43,8 @@ export interface RevokeAction {
 export interface Signer {
   /** Address that this signer represents on-chain. */
   readonly address: Address;
+  /** `kms` when signing via SpaceComputer Orbitport; `local` for dev keys. */
+  readonly signingBackend: 'kms' | 'local';
   /** Sign an unsigned EIP-1559 / legacy transaction and return the
    *  serialized signed bytes ready for `eth_sendRawTransaction`. */
   signTransaction(tx: TransactionSerializable): Promise<Hex>;

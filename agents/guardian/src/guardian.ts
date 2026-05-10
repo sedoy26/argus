@@ -15,6 +15,7 @@ import {
 
 import { fetchRisk, scoreLevel, signalApiBase } from './risk.ts';
 import { revokeApproval } from './protect.ts';
+import { notifyGuardianRevoke } from './telemetry.ts';
 import type { ProtectedWallet, Score, Signer } from './types.ts';
 
 export interface GuardianConfig {
@@ -142,6 +143,14 @@ export class Guardian {
           console.log(
             `[guardian] revoke ${wallet.label} → ${token} on ${this.config.spender} tx=${hash}`,
           );
+          void notifyGuardianRevoke({
+            wallet: wallet.address,
+            token,
+            spender: this.config.spender,
+            txHash: hash,
+            signingMode: walletSigner.signingBackend,
+            score,
+          });
         } catch (e) {
           console.error(
             `[guardian] revoke FAILED ${wallet.label} ${token}:`,

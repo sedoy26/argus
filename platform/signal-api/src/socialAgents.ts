@@ -1,8 +1,9 @@
 // In-memory "social scout agents" — periodic pollers for a trusted profile URL
 // (Reddit user or X/Twitter handle). New actionable posts run the same intel
 // corroboration as POST /intel. Reddit uses public JSON; X/Twitter uses Apify
-// when APIFY_TOKEN is set on signal-api.
+// when APIFY_X402_PRIVATE_KEY (preferred) or APIFY_TOKEN is set on signal-api.
 
+import { runApifyActorSync } from './apifyActor.ts';
 import { emit } from './events.ts';
 import type { ConsensusEnvelope } from './signals.ts';
 
@@ -48,7 +49,6 @@ const agents = new Map<string, AgentEntry>();
 let runIntel: RunIntelCorroboration | null = null;
 
 const APIFY_ACTOR = 'automation-lab~twitter-scraper';
-const APIFY_BASE = 'https://api.apify.com/v2';
 
 export function registerSocialIntelRunner(fn: RunIntelCorroboration): void {
   runIntel = fn;
@@ -152,16 +152,24 @@ function stopAgentsForProfileKey(key: string): void {
 }
 
 async function apifyUserTweets(handle: string): Promise<Array<Record<string, unknown>>> {
-  const token = Bun.env.APIFY_TOKEN ?? '';
-  if (!token) throw new Error('Twitter/X watch requires APIFY_TOKEN on signal-api (Apify bearer)');
-  const url = `${APIFY_BASE}/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?clean=1`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify({ usernames: [handle], mode: 'user-tweets', maxItems: 20 }),
+  if (!Bun.env.APIFY_X402_PRIVATE_KEY && !Bun.env.APIFY_TOKEN) {
+    throw new Error('Twitter/X watch requires APIFY_X402_PRIVATE_KEY (X402) or APIFY_TOKEN on signal-api');
+  }
+  const { rows, meta } = await runApifyActorSync(APIFY_ACTOR, {
+    usernames: [handle],
+    mode: 'user-tweets',
+    maxItems: 20,
   });
-  if (!res.ok) throw new Error(`Apify ${res.status}: ${(await res.text()).slice(0, 160)}`);
-  return (await res.json()) as Array<Record<string, unknown>>;
+  if (meta.usedX402) {
+    emit(
+      'info',
+      meta.x402PaymentTx
+        ? `Social agent: Apify X402 settlement ${String(meta.x402PaymentTx).slice(0, 14)}… ✓`
+        : 'Social agent: Apify request via X402 (USDC on Base) ✓',
+      { x402: true, apifySettlementTx: meta.x402PaymentTx ?? null, socialAgent: true },
+    );
+  }
+  return rows;
 }
 
 export function startSocialAgent(

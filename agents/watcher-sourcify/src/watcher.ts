@@ -153,10 +153,14 @@ export class Watcher {
     sources: SourcifyResult,
     d: Detection,
   ): Promise<SubmissionResult> {
+    const sourcifyVerificationUrl = `https://sourcify.dev/server/v2/contract/${target.chainId}/${target.address.toLowerCase()}`;
     const evidence = {
       source: sources.source_url?.startsWith('file://') ? 'sourcify+local' : 'sourcify',
       sourcify_status: sources.status,
       sourcify_url: sources.source_url,
+      sourcify_verification_url: sourcifyVerificationUrl,
+      compiler_metadata:
+        'Sourcify full_match / partial_match includes creation bytecode metadata + ABI — not text grep alone.',
       file: d.file,
       function: d.function,
       signature: d.signature,

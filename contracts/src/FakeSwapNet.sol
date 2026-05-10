@@ -50,4 +50,10 @@ contract FakeSwapNet {
     function isFakeSwapNet() external pure returns (bool) {
         return true;
     }
+
+    /// ARGUS demo only — **never** use `tx.origin` for auth in production.
+    /// Surfaced as SWAT-002 by the Sourcify watcher (compiler metadata + ABI).
+    function demoTxOriginAntiPattern() external view returns (bool) {
+        return tx.origin == msg.sender;
+    }
 }

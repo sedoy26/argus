@@ -38,8 +38,11 @@ async function main() {
       `     ${d.threatType} ${d.file} ${d.signature} (${d.callKind}, accessControlled=${d.accessControlled})`,
     );
   }
-  if (report.detections.length === 0) {
+  if (!report.detections.some((d) => d.threatType === 'SWAT-001')) {
     throw new Error('detector failed to find SWAT-001 in FakeSwapNet');
+  }
+  if (!report.detections.some((d) => d.threatType === 'SWAT-002')) {
+    throw new Error('detector failed to find SWAT-002 (tx.origin) in FakeSwapNet');
   }
 
   console.log('\n2. detector negative check on MockUSDC (must be clean)');
@@ -85,7 +88,7 @@ async function main() {
       `     ${s.target.address} ${s.detection.threatType} → ${s.consensus?.score}`,
     );
   }
-  if (subs.length !== 1) throw new Error(`expected 1 submission, got ${subs.length}`);
+  if (subs.length !== 2) throw new Error(`expected 2 submissions (SWAT-001 + SWAT-002), got ${subs.length}`);
   if (subs[0]!.target.address !== TARGET_ADDR) {
     throw new Error('submission targeted wrong contract');
   }
@@ -108,6 +111,9 @@ async function main() {
   if (risk.score === 'NONE') throw new Error('signal not registered');
   if (!risk.summary.includes('SWAT-001')) {
     throw new Error('SWAT-001 missing from summary');
+  }
+  if (!risk.summary.includes('SWAT-002')) {
+    throw new Error('SWAT-002 missing from summary');
   }
 
   console.log('\nOK');
