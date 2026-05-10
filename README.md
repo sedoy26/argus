@@ -80,3 +80,5 @@ cd scripts && bun run railway:configure-autodeploy
 ```
 
 Implementation: `scripts/railway/configure-github-autodeploy.ts` → Railway public API at `https://backboard.railway.com/graphql/v2` (`serviceConnect`, `serviceInstanceUpdate`, `serviceInstanceAutoDeployUpdate`, optional `serviceInstanceDeploy`). See [Public API](https://docs.railway.com/guides/public-api).
+
+If you see **`User does not have access to the repo`**, the [Railway GitHub App](https://github.com/settings/installations) must be allowed to access that repository (add `owner/repo` under Repository access). If each service **already** has the correct GitHub repo in the Railway UI, run with **`--skip-connect`** to apply only monorepo paths + autodeploy.

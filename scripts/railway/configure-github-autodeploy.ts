@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
  *   bun run scripts/railway/configure-github-autodeploy.ts --dry-run
  *   bun run scripts/railway/configure-github-autodeploy.ts --list
  *   bun run scripts/railway/configure-github-autodeploy.ts --deploy   # trigger deploy from latest commit after updates
+ *   bun run scripts/railway/configure-github-autodeploy.ts --skip-connect   # skip serviceConnect (repo already linked in UI / fix GitHub App first)
  */
 
 const GQL = 'https://backboard.railway.com/graphql/v2';
@@ -51,6 +52,23 @@ type DeployConfig = {
 
 function argFlag(name: string): boolean {
   return process.argv.includes(name);
+}
+
+function printGitHubRepoAccessHelp(repo: string): void {
+  console.error(`
+Railway could not link GitHub repo "${repo}" (serviceConnect).
+
+Fix (pick one):
+  1) GitHub → https://github.com/settings/installations → Railway → Configure
+     → Repository access → include "${repo}" (or all repos). Save.
+
+  2) Railway dashboard → same project → ensure your GitHub user is connected
+     (Account settings / project members with GitHub access).
+
+  3) If the service already shows this repo under Source, re-run with:
+       bun run railway:configure-autodeploy --skip-connect
+     That applies only rootDirectory, railway.toml path, and autodeploy (no serviceConnect).
+`);
 }
 
 /** Directory containing this script (`scripts/railway/`). */
@@ -230,6 +248,7 @@ async function main() {
   const cfg = loadConfig();
   const dry = argFlag('--dry-run');
   const doDeploy = argFlag('--deploy');
+  const skipConnect = argFlag('--skip-connect');
 
   const activeEnv = cfg.environmentId?.trim()
     ? pickEnvironment(proj.environments.edges, { id: cfg.environmentId.trim() })
@@ -244,18 +263,27 @@ async function main() {
     console.log(`\n→ ${label} (${sid})`);
 
     if (!dry) {
-      try {
-        await gql(M_CONNECT, {
-          id: sid,
-          input: { repo: cfg.githubRepo, branch: cfg.branch },
-        });
-        console.log('  serviceConnect: ok');
-      } catch (e) {
-        const msg = (e as Error).message;
-        if (/already|connected|duplicate/i.test(msg)) {
-          console.log('  serviceConnect: skipped (' + msg.slice(0, 120) + '…)');
-        } else {
-          throw e;
+      if (skipConnect) {
+        console.log('  serviceConnect: skipped (--skip-connect)');
+      } else {
+        try {
+          await gql(M_CONNECT, {
+            id: sid,
+            input: { repo: cfg.githubRepo, branch: cfg.branch },
+          });
+          console.log('  serviceConnect: ok');
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (/already|connected|duplicate/i.test(msg)) {
+            console.log('  serviceConnect: skipped (' + msg.slice(0, 120) + '…)');
+          } else if (/does not have access to the repo|not have access.*repo/i.test(msg)) {
+            printGitHubRepoAccessHelp(cfg.githubRepo);
+            throw new Error(
+              `serviceConnect failed for ${label}. Fix GitHub App access to "${cfg.githubRepo}", or re-run with --skip-connect if Source already shows this repo.`,
+            );
+          } else {
+            throw e;
+          }
         }
       }
 
@@ -284,7 +312,13 @@ async function main() {
         console.log('  serviceInstanceDeploy(latestCommit): ok');
       }
     } else {
-      console.log('  would: serviceConnect + serviceInstanceUpdate + autodeploy' + (doDeploy ? ' + deploy' : ''));
+      const parts = [
+        skipConnect ? null : 'serviceConnect',
+        'serviceInstanceUpdate',
+        'autodeploy',
+        doDeploy ? 'deploy' : null,
+      ].filter(Boolean);
+      console.log(`  would: ${parts.join(' + ')}`);
     }
   }
 
