@@ -10,6 +10,9 @@ export type ApifyCallMeta = {
   usedBearer: boolean;
   x402PaymentTx?: string;
   x402Network?: string;
+  /** USDC charged (human units, 6 dp) when Apify returned 402 and we signed. */
+  x402UsdcPaid?: string;
+  x402AtomicAmount?: string;
 };
 
 export async function runApifyActorSync(
@@ -23,8 +26,7 @@ export async function runApifyActorSync(
   const meta: ApifyCallMeta = { usedX402: false, usedBearer: false };
 
   if (x402Key) {
-    meta.usedX402 = true;
-    const res = await fetchWithX402(
+    const { response: res, payment } = await fetchWithX402(
       url,
       {
         method: 'POST',
@@ -33,6 +35,12 @@ export async function runApifyActorSync(
       },
       x402Key,
     );
+    // Only treat as X402-paid when Apify returned 402 and we signed (payment meta present).
+    meta.usedX402 = !!payment;
+    if (payment) {
+      meta.x402UsdcPaid = payment.usdcAmount;
+      meta.x402AtomicAmount = payment.atomicAmount;
+    }
     const settlement = parseX402Settlement(res);
     const payRef = settlement.transaction ?? settlement.tx;
     if (payRef) {

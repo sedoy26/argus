@@ -14,7 +14,7 @@ Argus is a **security intelligence and demo stack** for Ethereum that combines:
 4. **Standalone consensus** — when `STANDALONE=1`, the same HTTP API runs **in-process** consensus (mirroring applet rules) with **placeholder** boot hash and **deterministic mock** attestation fields. This mode is used for **cloud deploys** (e.g. Railway) where QEMU is not attached.
 5. **ENS CCIP-Read gateway** (`platform/ens-resolver`) — resolves wildcard-style queries by calling signal-api and mapping envelope fields to ENS text records; includes a human **`/preview/:addr`** JSON view.
 6. **Dashboard** (`dashboard/`) — React + Vite + Tailwind 4: **EIP-6963** wallet discovery (with legacy fallback), **role-gated** Scout / User / Admin experiences, intel submission, **social profile agents**, live event feed, contract cards, and a **glass / motion** UI with the Argus brand mark.
-7. **Agents** (repo `agents/*`) — separate processes: Sourcify-oriented watcher, Apify-oriented scout, on-chain watcher, guardian (KMS-oriented); they speak to signal-api over HTTP.
+7. **Agents** (repo `agents/*`) — separate processes: Sourcify-oriented watcher, **Apify scout (X402 or bearer token)**, on-chain watcher, guardian (KMS-oriented); they speak to signal-api over HTTP.
 
 **Important distinction:** “Production hardening” in the sense of multi-tenant persistence, signed gateway responses, and KMS-only guardians is **not** fully realized; the repo is **hackathon-grade** with clear extension points.
 
@@ -59,7 +59,7 @@ Three services are set up for **public demo** behavior:
 - `POST /signals` — validated submissions → TEE wire **or** standalone store.
 - `GET /risk/:address` — consensus envelope for an address (normalized path; trailing slash stripped on router).
 - `GET /events` — in-memory event stream for the dashboard feed.
-- `POST /intel` — URL/text → corroboration pipeline shared with agents (Apify-related behavior and fallbacks where configured).
+- `POST /intel` — URL/text → corroboration pipeline; **Twitter/X** uses Apify `run-sync-get-dataset-items` with **`APIFY_X402_PRIVATE_KEY` preferred** (`X-APIFY-PAYMENT-PROTOCOL: X402`, USDC on Base per [Apify X402](https://docs.apify.com/platform/integrations/x402)) or **`APIFY_TOKEN`** bearer fallback. On successful X402 settlement the live feed emits **`Scout paid 0.001 ETH via X402 for intelligence ✓`** (detail includes **USDC** amount from the 402 challenge).
 - `POST /simulate-tx` — demo / SWAT-004 style path (used with Sourcify + TEE narrative in UI).
 
 **Access & enrollment (in-memory)**
@@ -71,7 +71,7 @@ Three services are set up for **public demo** behavior:
 
 **Social agents (in-memory)**
 
-- `GET|POST|DELETE /agents/social` — list, create, stop profile-driven pollers (Reddit JSON + Twitter via Apify when `APIFY_TOKEN` is set).
+- `GET|POST|DELETE /agents/social` — list, create, stop profile-driven pollers (Reddit JSON + Twitter via Apify when **`APIFY_X402_PRIVATE_KEY` or `APIFY_TOKEN`** is set on signal-api).
 - Legacy paths **`/agents/reddit`** — same handlers for compatibility.
 
 **Cross-cutting**
@@ -128,7 +128,7 @@ Deploy / seed scripts exist under `contracts/script/` (e.g. `Deploy.s.sol`, `See
 | Agent | Purpose |
 |-------|---------|
 | **watcher-sourcify** | Static analysis + Sourcify (or local fallback) → `POST /signals`. Includes **smoke** script. |
-| **scout-apify** | Tweet / feed extraction → scout pipeline → signal-api. **MockFeed smoke** avoids live Apify in CI. |
+| **scout-apify** | Tweet / feed extraction → scout pipeline → signal-api; same **X402** handshake as signal-api (`agents/scout-apify/src/x402.ts`). **MockFeed smoke** avoids live Apify in CI. |
 | **watcher-onchain** | On-chain activity → signals (per README). |
 | **guardian** | Consumes high-risk consensus / events, performs protective txs with configured keys (per README). |
 
@@ -160,9 +160,9 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 | Scenario | Status | Notes |
 |----------|--------|--------|
 | **Vite dashboard + local signal + local gateway** | **Works** when proxy targets match running ports (`dev:reset` / `scripts/.env`). | Most common dev loop for UI + API. |
-| **Dashboard → `/intel` → score / events** | **Works** in dev with signal-api up; Apify pieces depend on **`APIFY_TOKEN`** and rate limits. | Scout tab + social add-on gating per access policy. |
+| **Dashboard → `/intel` → score / events** | **Works** in dev with signal-api up; Apify depends on **`APIFY_X402_PRIVATE_KEY`** (bounty / per-request pay) or **`APIFY_TOKEN`**, plus rate limits. | Feed shows X402 line when X402 path completes. |
 | **Social agents (Reddit)** | **Works** for public JSON endpoints without keys. | Polling is server-side; state is in-memory. |
-| **Social agents (X/Twitter)** | **Works when `APIFY_TOKEN`** is configured on signal-api. | Otherwise expect errors or reduced behavior. |
+| **Social agents (X/Twitter)** | **Works when `APIFY_X402_PRIVATE_KEY` or `APIFY_TOKEN`** is set on signal-api. | Same actor runner as `/intel`. |
 | **`scripts/demo.ts` full chain** | **Works when prerequisites running** (QEMU, signal-api, paths in script). | Heavy; best pre-stage / recorded backup (see `presentation/`). |
 | **Railway standalone stack** | **Deployed pattern** | signal-api + gateway + static dashboard; **no** TEE attestation equivalence to QEMU mode. Set **`ARGUS_ADMIN_ADDRESSES`** on signal-api for the wallet(s) that may use Admin / demo reset; **`ARGUS_PRIVILEGED_ADDRESSES`** is for Scout bypass only (comma-separated `0x…40`). |
 
@@ -224,7 +224,8 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 | `STANDALONE=1` | No bridge; in-process consensus. |
 | `PORT` | HTTP listen (Railway injects). |
 | `DEVICE_HOST` / `DEVICE_PORT` | Bridge target when not standalone. |
-| `APIFY_TOKEN` | Enables Twitter path in intel / social agents. |
+| `APIFY_X402_PRIVATE_KEY` | **Preferred:** Apify actor calls use X402 (USDC on Base, ERC-3009); see Apify docs. |
+| `APIFY_TOKEN` | Fallback bearer auth for Apify when X402 key is unset. |
 | `ARGUS_AUTH_STRICT` | Stricter UI messaging around signatures; does **not** grant roles by itself. |
 | `ARGUS_PRIVILEGED_ADDRESSES` | Comma-separated wallets that get **Scout** UI without enrollment (deploy / demo team). |
 | `ARGUS_ADMIN_ADDRESSES` | Comma-separated wallets allowed for **Admin** tab, enrollment moderation, and signed **demo reset**. **Required** for any admin — there is **no** fallback to the privileged list. |
@@ -254,4 +255,4 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 
 ---
 
-*Last updated: access-control model (separate admin vs privileged allowlists, `/access` echo + no-store, client race/cache hardening), EIP-6963-first wallet picker, and Railway env notes. Update when deployment topology or trust claims change.*
+*Last updated: Apify **X402** scout path (feed headline + USDC detail), access-control model, EIP-6963 wallet picker, Railway env notes. Update when deployment topology or trust claims change.*

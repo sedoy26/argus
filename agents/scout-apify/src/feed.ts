@@ -84,7 +84,7 @@ export class ApifyFeed implements FeedClient {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
     };
-    if (this.opts.apifyToken) {
+    if (this.opts.apifyToken && !this.opts.x402PrivateKey) {
       headers['authorization'] = `Bearer ${this.opts.apifyToken}`;
     }
 
@@ -92,7 +92,12 @@ export class ApifyFeed implements FeedClient {
     if (this.opts.x402PrivateKey) {
       // Full X402 handshake: 402 → sign → retry with PAYMENT-SIGNATURE
       const { fetchWithX402 } = await import('./x402.ts');
-      r = await fetchWithX402(url, { method: 'POST', headers, body: JSON.stringify(this.opts.runInput) }, this.opts.x402PrivateKey);
+      const { response } = await fetchWithX402(
+        url,
+        { method: 'POST', headers, body: JSON.stringify(this.opts.runInput) },
+        this.opts.x402PrivateKey,
+      );
+      r = response;
     } else {
       r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(this.opts.runInput) });
     }

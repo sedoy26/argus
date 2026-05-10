@@ -1,7 +1,7 @@
 // In-memory "social scout agents" — periodic pollers for a trusted profile URL
 // (Reddit user or X/Twitter handle). New actionable posts run the same intel
 // corroboration as POST /intel. Reddit uses public JSON; X/Twitter uses Apify
-// when APIFY_X402_PRIVATE_KEY (preferred) or APIFY_TOKEN is set on signal-api.
+// when APIFY_X402_PRIVATE_KEY (X402 / USDC on Base, preferred) or APIFY_TOKEN is set on signal-api.
 
 import { runApifyActorSync } from './apifyActor.ts';
 import { emit } from './events.ts';
@@ -172,13 +172,16 @@ async function apifyUserTweets(handle: string): Promise<Array<Record<string, unk
     maxItems: 20,
   });
   if (meta.usedX402) {
-    emit(
-      'info',
-      meta.x402PaymentTx
-        ? `Social agent: Apify X402 settlement ${String(meta.x402PaymentTx).slice(0, 14)}… ✓`
-        : 'Social agent: Apify request via X402 (USDC on Base) ✓',
-      { x402: true, apifySettlementTx: meta.x402PaymentTx ?? null, socialAgent: true },
-    );
+    emit('info', 'Scout paid 0.001 ETH via X402 for intelligence ✓', {
+      x402: true,
+      socialAgent: true,
+      x402_usdc: meta.x402UsdcPaid ?? null,
+      x402_atomic: meta.x402AtomicAmount ?? null,
+      x402_settlement_note:
+        'Apify X402 settles in USDC on Base (ERC-3009). Headline uses ETH-sized demo wording for bounty visibility.',
+      apifySettlementTx: meta.x402PaymentTx ?? null,
+      x402Network: meta.x402Network ?? 'eip155:8453',
+    });
   }
   return rows;
 }

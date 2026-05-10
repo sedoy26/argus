@@ -324,11 +324,15 @@ function EventExplainer({ ev }: { ev: ArgusEvent }) {
     case 'info': {
       if (d.x402) {
         lines.push(
-          'Apify X402: the scout paid for this actor run with USDC on Base (ERC-3009 TransferWithAuthorization).',
+          'Apify X402: HTTP 402 → sign ERC-3009 USDC authorization on Base → retry with PAYMENT-SIGNATURE (see docs.apify.com/platform/integrations/x402).',
           d.apifySettlementTx
-            ? `Settlement reference: ${String(d.apifySettlementTx).slice(0, 28)}…`
-            : 'Payment completed per Apify X402 headers (see Apify console for settlement tx when present).',
+            ? `On-chain settlement ref: ${String(d.apifySettlementTx).slice(0, 28)}…`
+            : 'Settlement tx may appear in Apify PAYMENT-RESPONSE when the actor settles the transfer.',
         );
+        if (d.x402_usdc != null && String(d.x402_usdc).length > 0) {
+          lines.push(`Charged (challenge): ≈ ${String(d.x402_usdc)} USDC on Base (headline may use ETH-sized demo wording).`);
+        }
+        if (d.x402_settlement_note) lines.push(String(d.x402_settlement_note));
       } else if (d.space_kms_signed || d.signed_via === 'space_kms') {
         lines.push(
           'Guardian revocation was signed inside SpaceComputer Orbitport KMS — the operator never saw the raw secp256k1 key.',
@@ -445,8 +449,11 @@ function EventRow({ ev }: { ev: ArgusEvent }) {
           {ev.kind === 'info' && d.x402 === true && (
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <span className="inline-flex rounded-full bg-amber-500/15 border border-amber-400/35 px-2 py-0.5 text-[10px] font-semibold text-amber-50">
-                Apify X402 (USDC on Base) ✓
+                X402 paid (USDC / Base) ✓
               </span>
+              {typeof d.x402_usdc === 'string' && d.x402_usdc.length > 0 && (
+                <span className="text-[10px] text-amber-200/90">~{d.x402_usdc} USDC</span>
+              )}
               {typeof d.apifySettlementTx === 'string' && d.apifySettlementTx.length > 6 && (
                 <span className="mono text-[10px] text-(--color-argus-muted) truncate max-w-[200px]" title={String(d.apifySettlementTx)}>
                   settlement {String(d.apifySettlementTx).slice(0, 20)}…

@@ -101,11 +101,12 @@ async function apidojoRun(input: Record<string, unknown>): Promise<Array<Record<
   let res: Response;
   if (X402_KEY) {
     console.log(`[x402] paying for ${ACTOR_ID} run (USDC on Base)…`);
-    res = await fetchWithX402(url, {
+    const { response } = await fetchWithX402(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
     }, X402_KEY);
+    res = response;
   } else {
     res = await apifyFetch(`/acts/${ACTOR_SLUG}/run-sync-get-dataset-items?clean=1`, {
       method: 'POST',

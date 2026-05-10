@@ -59,16 +59,26 @@ function randomNonce(): Hex {
   return ('0x' + Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')) as Hex;
 }
 
+function formatUsdc6Units(raw: bigint): string {
+  const n = Number(raw) / 1e6;
+  if (!Number.isFinite(n)) return String(raw);
+  return n.toFixed(6).replace(/\.?0+$/, '') || '0';
+}
+
+export type X402SignedPayment = {
+  paymentSignatureB64: string;
+  usdcAmount: string;
+  atomicAmount: string;
+};
+
 /**
  * Given the PAYMENT-REQUIRED header value (base64-encoded JSON), produce the
- * PAYMENT-SIGNATURE header value by signing with the provided private key.
- *
- * Returns null if no EVM payment option is available.
+ * PAYMENT-SIGNATURE payload by signing with the provided private key.
  */
 export async function signX402Payment(
   paymentRequiredB64: string,
   privateKey: Hex,
-): Promise<string | null> {
+): Promise<X402SignedPayment | null> {
   const paymentRequiredJson = Buffer.from(paymentRequiredB64, 'base64').toString('utf-8');
   const paymentRequired = JSON.parse(paymentRequiredJson) as PaymentRequired;
 
@@ -85,6 +95,7 @@ export async function signX402Payment(
   const validAfter = BigInt(0);
   const validBefore = BigInt(Math.floor(Date.now() / 1000) + accepted.maxTimeoutSeconds);
   const value = BigInt(accepted.amount);
+  const usdcAmount = formatUsdc6Units(value);
 
   const signature = await account.signTypedData({
     domain: ERC3009_DOMAIN,
@@ -127,10 +138,14 @@ export async function signX402Payment(
     extensions: {},
   };
 
-  const result = Buffer.from(JSON.stringify(payload)).toString('base64');
-  console.log(`[x402] signed payment: ${value.toString()} units USDC → ${accepted.payTo.slice(0, 10)}… on ${accepted.network}`);
-  return result;
+  const paymentSignatureB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+  console.log(
+    `[x402] signed payment: ${usdcAmount} USDC → ${accepted.payTo.slice(0, 10)}… on ${accepted.network}`,
+  );
+  return { paymentSignatureB64, usdcAmount, atomicAmount: accepted.amount };
 }
+
+export type X402FetchMeta = { usdcAmount: string; atomicAmount: string };
 
 /**
  * Wraps a fetch call with the X402 handshake for Apify.
@@ -142,7 +157,7 @@ export async function fetchWithX402(
   url: string,
   init: RequestInit,
   privateKey: Hex,
-): Promise<Response> {
+): Promise<{ response: Response; payment?: X402FetchMeta }> {
   const firstHeaders: Record<string, string> = {
     ...(init.headers as Record<string, string>),
     'X-APIFY-PAYMENT-PROTOCOL': 'X402',
@@ -151,7 +166,7 @@ export async function fetchWithX402(
   const firstRes = await fetch(url, { ...init, headers: firstHeaders });
 
   if (firstRes.status !== 402) {
-    return firstRes;
+    return { response: firstRes };
   }
 
   const paymentRequiredB64 = firstRes.headers.get('PAYMENT-REQUIRED');
@@ -160,15 +175,15 @@ export async function fetchWithX402(
   }
 
   console.log('[x402] 402 received — signing payment…');
-  const paymentSignature = await signX402Payment(paymentRequiredB64, privateKey);
-  if (!paymentSignature) {
+  const signed = await signX402Payment(paymentRequiredB64, privateKey);
+  if (!signed) {
     throw new Error('[x402] could not sign payment (no compatible payment option in 402)');
   }
 
   const secondHeaders: Record<string, string> = {
     ...(init.headers as Record<string, string>),
     'X-APIFY-PAYMENT-PROTOCOL': 'X402',
-    'PAYMENT-SIGNATURE': paymentSignature,
+    'PAYMENT-SIGNATURE': signed.paymentSignatureB64,
   };
 
   const secondRes = await fetch(url, { ...init, headers: secondHeaders });
@@ -191,5 +206,8 @@ export async function fetchWithX402(
     }
   }
 
-  return secondRes;
+  return {
+    response: secondRes,
+    payment: { usdcAmount: signed.usdcAmount, atomicAmount: signed.atomicAmount },
+  };
 }
