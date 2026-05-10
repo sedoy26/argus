@@ -1,19 +1,36 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 // Proxy /api → signal-api and /gw → ens-resolver gateway.
 //
-// Defaults match `bun run dev` in each service: signal-api :8787,
-// ens-resolver :8788. If you use `reset.sh`, it often runs signal-api
-// on :8788 and the gateway on :8789 — then start Vite with:
-//   VITE_API_TARGET=http://127.0.0.1:8788 VITE_GW_TARGET=http://127.0.0.1:8789 bun run dev
-//
-// For production deploys point /api and /gw at the hosted endpoints
-// in your reverse proxy / CDN.
+// Priority: VITE_API_TARGET / VITE_GW_TARGET env, then ARGUS_API / ARGUS_GATEWAY
+// from repo `scripts/.env` (same keys as demos), then defaults :8787 / :8788.
+// Override with `bun run dev:reset` or explicit VITE_* when ports differ.
 
-const API_TARGET = process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8787';
-const GW_TARGET = process.env.VITE_GW_TARGET ?? 'http://127.0.0.1:8788';
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function readArgusFromScriptsEnv(): { api?: string; gw?: string } {
+  const p = path.join(repoRoot, 'scripts', '.env');
+  if (!existsSync(p)) return {};
+  const out: { api?: string; gw?: string } = {};
+  for (const line of readFileSync(p, 'utf8').split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const am = t.match(/^ARGUS_API=(.+)$/);
+    if (am) out.api = am[1].trim().replace(/^["']|["']$/g, '');
+    const gm = t.match(/^ARGUS_GATEWAY=(.+)$/);
+    if (gm) out.gw = gm[1].trim().replace(/^["']|["']$/g, '');
+  }
+  return out;
+}
+
+const fromScripts = readArgusFromScriptsEnv();
+const API_TARGET = process.env.VITE_API_TARGET ?? fromScripts.api ?? 'http://127.0.0.1:8787';
+const GW_TARGET = process.env.VITE_GW_TARGET ?? fromScripts.gw ?? 'http://127.0.0.1:8788';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

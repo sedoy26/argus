@@ -17,10 +17,14 @@ import {
   getRisk,
   submitEnrollmentRequest,
   submitIntel,
+  createSocialAgent,
+  deleteSocialAgent,
+  listSocialAgents,
   walletPersonalSign,
   type AccessInfo,
   type EnrollmentRow,
   type IntelResult,
+  type SocialAgentRow,
 } from './api';
 import type {
   ArgusEvent,
@@ -756,6 +760,146 @@ function IntelPanel({ onDone, allowSocialSource = true }: { onDone: () => void; 
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function normalizeSocialProfileInput(raw: string): string {
+  const t = raw.trim();
+  if (!t) return t;
+  if (/^https?:\/\//i.test(t)) return t;
+  if (/^[a-z0-9_-]{2,32}$/i.test(t) && !t.includes('/') && !t.includes('.')) {
+    return `https://www.reddit.com/user/${t.replace(/^u\//i, '')}`;
+  }
+  return t;
+}
+
+function SocialAgentPanel({ onAgentsChanged }: { onAgentsChanged: () => void }) {
+  const [profileUrl, setProfileUrl] = useState('');
+  const [pollSec, setPollSec] = useState(120);
+  const [agents, setAgents] = useState<SocialAgentRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const refresh = useCallback(() => {
+    void listSocialAgents()
+      .then(setAgents)
+      .catch(() => setAgents([]));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 8000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const deploy = () => {
+    void (async () => {
+      const u = normalizeSocialProfileInput(profileUrl);
+      if (!u) {
+        setErr('Paste a profile URL (or a Reddit username only)');
+        return;
+      }
+      setBusy(true);
+      setErr('');
+      try {
+        await createSocialAgent({ profileUrl: u, pollSec });
+        setProfileUrl('');
+        refresh();
+        onAgentsChanged();
+      } catch (e) {
+        setErr((e as Error).message ?? 'failed');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  const stop = (id: string) => {
+    void (async () => {
+      try {
+        await deleteSocialAgent(id);
+        refresh();
+        onAgentsChanged();
+      } catch (e) {
+        setErr((e as Error).message ?? 'stop failed');
+      }
+    })();
+  };
+
+  return (
+    <div className="rounded-xl border border-sky-500/30 bg-(--color-argus-card)/60 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-500/20 bg-sky-500/5">
+        <span className="text-sky-300 text-base">🤖</span>
+        <span className="text-sm font-semibold text-sky-200">Social scout agent</span>
+        <span className="ml-auto text-[10px] text-(--color-argus-muted) bg-(--color-argus-bg) px-2 py-0.5 rounded-full border border-(--color-argus-border)">
+          server poll
+        </span>
+      </div>
+      <div className="p-4 space-y-3 text-xs">
+        <p className="text-(--color-argus-muted) leading-relaxed">
+          Paste a <span className="text-sky-300 font-medium">public profile URL</span> —{' '}
+          <span className="mono">reddit.com/user/…</span> (demo, no API key) or{' '}
+          <span className="mono">x.com/handle</span> (needs <span className="font-medium">APIFY_TOKEN</span> on signal-api).
+          New posts that mention the demo contract or a <span className="mono">0x…</span> address run the same intel corroboration as manual Scout;{' '}
+          <span className="text-amber-300">guardian_trigger</span> fires when consensus crosses RED. Keep your guardian process running for on-chain revokes.
+        </p>
+        <div className="space-y-1">
+          <label className="text-[10px] uppercase text-(--color-argus-muted)">Profile URL</label>
+          <input
+            value={profileUrl}
+            onChange={(e) => setProfileUrl(e.target.value)}
+            placeholder="https://www.reddit.com/user/Sedoy26 — or bare Reddit name — or https://x.com/…"
+            className="mono w-full bg-(--color-argus-bg) border border-(--color-argus-border) rounded-md px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] uppercase text-(--color-argus-muted)">Poll every (seconds)</label>
+          <input
+            type="number"
+            min={30}
+            max={600}
+            value={pollSec}
+            onChange={(e) => setPollSec(Number(e.target.value) || 120)}
+            className="w-full bg-(--color-argus-bg) border border-(--color-argus-border) rounded-md px-3 py-1.5 text-xs"
+          />
+        </div>
+        {err && <div className="text-[11px] text-rose-400">{err}</div>}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={deploy}
+          className="w-full py-2 text-xs font-semibold rounded-lg bg-sky-600/80 hover:bg-sky-500/80 text-white disabled:opacity-40"
+        >
+          {busy ? 'Starting…' : 'Deploy agent'}
+        </button>
+
+        <div className="pt-2 border-t border-(--color-argus-border) space-y-2">
+          <div className="text-[10px] uppercase text-(--color-argus-muted)">Active agents</div>
+          {agents.length === 0 && (
+            <p className="text-[11px] text-(--color-argus-muted)">
+              None — if you see 404 here, the dashboard proxy is not reaching signal-api (check Vite <span className="mono">VITE_API_TARGET</span>).
+            </p>
+          )}
+          {agents.map((a) => (
+            <div key={a.id} className="flex items-start justify-between gap-2 rounded-md border border-(--color-argus-border) bg-(--color-argus-bg)/50 px-2 py-1.5">
+              <div className="min-w-0">
+                <div className="font-medium text-sky-200">
+                  <span className="text-[10px] uppercase text-(--color-argus-muted) mr-1">{a.platform}</span>
+                  <span className="break-all">{a.profileUrl}</span>
+                </div>
+                <div className="text-[10px] text-(--color-argus-muted) mono truncate">
+                  id {a.id} · poll {Math.round(a.pollMs / 1000)}s · posts {a.postsProcessed}
+                </div>
+                {a.lastError && <div className="text-[10px] text-rose-400/90 mt-0.5">{a.lastError}</div>}
+              </div>
+              <button type="button" onClick={() => stop(a.id)} className="shrink-0 text-[10px] text-rose-400 hover:text-rose-300">
+                Stop
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1823,6 +1967,7 @@ export function App() {
           {/* left: intel panel + watchlist */}
           <aside className="space-y-4">
             <IntelPanel onDone={refetchAll} allowSocialSource={allowSocialSource} />
+            <SocialAgentPanel onAgentsChanged={refetchAll} />
 
             {/* watchlist (collapsed-style) */}
             <div className="rounded-xl border border-(--color-argus-border) bg-(--color-argus-card)/40 p-4 space-y-3">

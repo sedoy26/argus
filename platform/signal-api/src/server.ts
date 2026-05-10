@@ -9,6 +9,8 @@
 //   GET  /health             — bridge reachability
 //   GET  /boot               — applet boot commitment + code hash
 //   POST /signals            — submit a verified signal
+//   POST /intel              — scrape URL / text → corroborated signals
+//   GET|POST|DELETE /agents/social — profile URL pollers (Reddit + X/Twitter, in-memory demo)
 //   GET  /risk/:address      — query consensus for a contract
 //
 // Defaults: HTTP on :8787, bridge at 127.0.0.1:4000 (override with
@@ -35,8 +37,16 @@ import {
   parseBootInfo,
   parseEnvelope,
   validate,
+  type ConsensusEnvelope,
   type SignalSubmission,
 } from './signals.ts';
+import {
+  listSocialAgents,
+  registerSocialIntelRunner,
+  startSocialAgent,
+  stopSocialAgent,
+  type IntelCorroborationResult,
+} from './socialAgents.ts';
 
 // ── cTRNG (SpaceComputer cosmic true random) ──────────────────────────────────
 // Used to generate hardware-attested nonces for TEE attestation proofs.
@@ -61,7 +71,7 @@ async function hardwareNonce(): Promise<{ nonce: string; source: string }> {
       const res = await _ctrngSdk.ctrng.random({ src: 'rng' });
       // SDK returns ServiceResult; actual payload is res.data
       // Shape: { service, src, data: "<hex string>" } or { ctrng: number[] }
-      const payload = res.data as Record<string, unknown>;
+      const payload = res.data as unknown as Record<string, unknown>;
       let hexStr: string | undefined;
       if (typeof payload['data'] === 'string') {
         hexStr = payload['data'].slice(0, 32); // first 16 bytes = 32 hex chars
@@ -195,6 +205,78 @@ async function processSignal(submission: SignalSubmission) {
   return { evHash, envelope };
 }
 
+/** Shared corroboration path for POST /intel and Reddit scout agents. */
+async function runIntelCorroborationFromText(
+  intelText: string,
+  source: string,
+  steps: string[],
+): Promise<IntelCorroborationResult> {
+  if (!intelText.trim()) return { error: 'no text to analyze' };
+
+  steps.push('resolving_address');
+  const lower = intelText.toLowerCase();
+  let contractAddress: string | undefined;
+
+  for (const [key, addr] of Object.entries(PROJECT_REGISTRY)) {
+    if (lower.includes(key)) {
+      contractAddress = addr;
+      break;
+    }
+  }
+  const addrMatch = intelText.match(/0x[0-9a-fA-F]{40}/);
+  if (!contractAddress && addrMatch) contractAddress = addrMatch[0].toLowerCase();
+
+  if (!contractAddress) {
+    return {
+      error:
+        'could not resolve a contract address from this intel (mention @FakeSwapNet or include a 0x address)',
+    };
+  }
+
+  steps.push('address_resolved');
+  emit('info', `Address resolved: ${contractAddress.slice(0, 10)}…`, { contractAddress });
+
+  steps.push('submitting_signal');
+
+  const corroborators = [
+    { submitter: 'scout.agents.argus-security.eth', reputation: 80 },
+    { submitter: 'peckshield.scouts.argus-security.eth', reputation: 90 },
+    { submitter: 'certik.scouts.argus-security.eth', reputation: 85 },
+  ];
+
+  let lastEnvelope: ConsensusEnvelope | undefined;
+  let lastHash = '';
+  for (const { submitter, reputation } of corroborators) {
+    const submission: SignalSubmission = {
+      contractAddress,
+      chainId: 11155111,
+      threatType: 'SWAT-001',
+      verdict: 'CONFIRMED',
+      evidence: {
+        source: submitter === corroborators[0]!.submitter ? source : `corroboration:${submitter}`,
+        note: intelText.slice(0, 300),
+      },
+      submitter,
+      reputation,
+    };
+    const { evHash, envelope } = await processSignal(submission);
+    lastEnvelope = envelope;
+    lastHash = evHash;
+  }
+
+  steps.push('done');
+
+  if (!lastEnvelope) return { error: 'pipeline produced no consensus envelope' };
+
+  return {
+    steps,
+    contractAddress,
+    text: intelText,
+    evidence_hash: lastHash,
+    consensus: lastEnvelope,
+  };
+}
+
 async function handleSubmit(req: Request): Promise<Response> {
   const body = await readJson(req);
   const submission = body as SignalSubmission;
@@ -285,54 +367,16 @@ async function handleIntel(req: Request): Promise<Response> {
 
   if (!intelText.trim()) return bad('no text to analyze');
 
-  // Resolve contract address from mentions or inline address
-  steps.push('resolving_address');
-  const lower = intelText.toLowerCase();
-  let contractAddress: string | undefined;
-
-  for (const [key, addr] of Object.entries(PROJECT_REGISTRY)) {
-    if (lower.includes(key)) { contractAddress = addr; break; }
-  }
-  const addrMatch = intelText.match(/0x[0-9a-fA-F]{40}/);
-  if (!contractAddress && addrMatch) contractAddress = addrMatch[0].toLowerCase();
-
-  if (!contractAddress) {
-    return bad('could not resolve a contract address from this intel (mention @FakeSwapNet or include a 0x address)');
-  }
-
-  steps.push('address_resolved');
-  emit('info', `Address resolved: ${contractAddress.slice(0, 10)}…`, { contractAddress });
-
-  // Submit through TEE pipeline — primary signal + corroborating scouts
-  // to reach CRITICAL consensus (requires 2+ confirmed signals).
-  steps.push('submitting_signal');
-
-  const corroborators = [
-    { submitter: 'scout.agents.argus-security.eth',    reputation: 80 },
-    { submitter: 'peckshield.scouts.argus-security.eth', reputation: 90 },
-    { submitter: 'certik.scouts.argus-security.eth',    reputation: 85 },
-  ];
-
-  let lastEnvelope;
-  let lastHash = '';
-  for (const { submitter, reputation } of corroborators) {
-    const submission: SignalSubmission = {
-      contractAddress,
-      chainId: 11155111,
-      threatType: 'SWAT-001',
-      verdict: 'CONFIRMED',
-      evidence: { source: submitter === corroborators[0]!.submitter ? source : `corroboration:${submitter}`, note: intelText.slice(0, 300) },
-      submitter,
-      reputation,
-    };
-    const { evHash, envelope } = await processSignal(submission);
-    lastEnvelope = envelope;
-    lastHash = evHash;
-  }
-
-  steps.push('done');
-
-  return json({ ok: true, steps, contractAddress, text: intelText, evidence_hash: lastHash, consensus: lastEnvelope });
+  const out = await runIntelCorroborationFromText(intelText, source, steps);
+  if ('error' in out) return bad(out.error);
+  return json({
+    ok: true,
+    steps: out.steps,
+    contractAddress: out.contractAddress,
+    text: out.text,
+    evidence_hash: out.evidence_hash,
+    consensus: out.consensus,
+  });
 }
 
 async function handleSimulateTx(req: Request): Promise<Response> {
@@ -541,11 +585,38 @@ async function handleEnrollmentModerate(req: Request): Promise<Response> {
   return bad('action must be list | approve | reject', 400);
 }
 
+async function handleSocialAgentCreate(req: Request): Promise<Response> {
+  const body = (await readJson(req)) as { profileUrl?: string; redditUser?: string; pollSec?: number };
+  const fromLegacy = (body.redditUser ?? '').trim();
+  const profileUrl =
+    (body.profileUrl ?? '').trim() ||
+    (fromLegacy ? `https://www.reddit.com/user/${fromLegacy.replace(/^u\//i, '')}` : '');
+  if (!profileUrl) return bad('profileUrl required (or legacy redditUser)', 400);
+  const pollSec = body.pollSec ?? 120;
+  try {
+    const keys = Object.keys(PROJECT_REGISTRY);
+    const agent = startSocialAgent(profileUrl, pollSec * 1000, keys);
+    return json({ ok: true, agent });
+  } catch (e) {
+    return bad((e as Error).message ?? String(e), 400);
+  }
+}
+
+function handleSocialAgentDelete(url: URL): Response {
+  const id = url.searchParams.get('id') ?? '';
+  if (!id) return bad('id query required', 400);
+  if (!stopSocialAgent(id)) return bad('agent not found', 404);
+  return json({ ok: true });
+}
+
+registerSocialIntelRunner(runIntelCorroborationFromText);
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
-    const path = url.pathname;
+    let path = url.pathname;
+    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
     // CORS for dashboard dev server
     const corsHeaders = {
       'access-control-allow-origin': '*',
@@ -565,6 +636,12 @@ const server = Bun.serve({
       else if (req.method === 'POST' && path === '/enrollment') res = await handleEnrollmentApply(req);
       else if (req.method === 'POST' && path === '/enrollment/moderate') res = await handleEnrollmentModerate(req);
       else if (req.method === 'GET' && path === '/events') res = handleEvents(url);
+      else if (req.method === 'GET' && path === '/agents/social') res = json({ agents: listSocialAgents() });
+      else if (req.method === 'POST' && path === '/agents/social') res = await handleSocialAgentCreate(req);
+      else if (req.method === 'DELETE' && path === '/agents/social') res = handleSocialAgentDelete(url);
+      else if (req.method === 'GET' && path === '/agents/reddit') res = json({ agents: listSocialAgents() });
+      else if (req.method === 'POST' && path === '/agents/reddit') res = await handleSocialAgentCreate(req);
+      else if (req.method === 'DELETE' && path === '/agents/reddit') res = handleSocialAgentDelete(url);
       else {
         const m = path.match(/^\/risk\/([^/]+)$/);
         if (req.method === 'GET' && m) res = await handleRisk(m[1]!);

@@ -25,16 +25,14 @@ bun run dev    # http://localhost:5173
 ```
 
 The Vite dev server proxies:
-- `/api/*` → `http://127.0.0.1:8787` (signal-api)
-- `/gw/*` → `http://127.0.0.1:8788` (ens-resolver gateway)
+- `/api/*` → signal-api (default `http://127.0.0.1:8787`)
+- `/gw/*` → ens-resolver gateway (default `http://127.0.0.1:8788`)
 
 so the SPA fetches from same-origin paths and avoids any CORS dance.
 
-**Port mismatch:** `reset.sh` starts signal-api on **8788** and the ENS gateway on **8789**. If you use that script, start the dashboard with:
+**Ports:** If the repo root `scripts/.env` defines `ARGUS_API` / `ARGUS_GATEWAY`, Vite uses those for the proxy (same values as `reset.sh` demos). Otherwise set `VITE_API_TARGET` / `VITE_GW_TARGET`, or run `bun run dev:reset` when using `./reset.sh` on **8788** / **8789**.
 
-`bun run dev:reset` (same as setting `VITE_API_TARGET` / `VITE_GW_TARGET` for ports **8788** / **8789**), or the equivalent `VITE_API_TARGET=http://127.0.0.1:8788 VITE_GW_TARGET=http://127.0.0.1:8789 bun run dev`.
-
-If `/api` points at the wrong process you may see **404** on `/access`; if nothing is listening on the proxy target you may see **500** with an empty body after connecting a wallet.
+If `/api` points at the wrong process you may see **404** on new routes; if nothing is listening on the proxy target you may see **500** with an empty body after connecting a wallet.
 For production you'd point `/api` and `/gw` at your hosted endpoints
 through a reverse proxy.
 

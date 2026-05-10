@@ -14,11 +14,15 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!res.ok) {
     const empty = !text.trim();
-    const hint =
+    const hint500 =
       res.status >= 500 && empty
         ? ' Empty response usually means the Vite proxy could not reach signal-api (wrong port). Default proxy is :8787; ./reset.sh runs signal-api on :8788 — then use VITE_API_TARGET=http://127.0.0.1:8788 (and VITE_GW_TARGET=http://127.0.0.1:8789).'
         : '';
-    throw new Error(`${res.status}: ${empty ? '(empty)' : text}${hint}`);
+    const hint404 =
+      res.status === 404 && /not found/i.test(text)
+        ? ' If /api/health works in the browser but this path 404s, restart signal-api after git pull. If nothing listens on the Vite proxy port, use `cd dashboard && bun run dev:reset` when ./reset.sh is running.'
+        : '';
+    throw new Error(`${res.status}: ${empty ? '(empty)' : text}${hint500}${hint404}`);
   }
   try {
     return JSON.parse(text) as T;
@@ -92,6 +96,44 @@ export async function submitIntel(args: { tweetUrl?: string; text?: string }): P
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(args),
     }),
+  );
+}
+
+// ── Social “scout agents” (server-side periodic pollers by profile URL) ─────
+
+export type SocialAgentPlatform = 'reddit' | 'twitter';
+
+export interface SocialAgentRow {
+  id: string;
+  profileUrl: string;
+  platform: SocialAgentPlatform;
+  pollMs: number;
+  lastPollAt: number | null;
+  lastError: string | null;
+  postsProcessed: number;
+}
+
+export async function listSocialAgents(): Promise<SocialAgentRow[]> {
+  const j = await jsonOrThrow<{ agents?: SocialAgentRow[] }>(await fetch('/api/agents/social'));
+  return j.agents ?? [];
+}
+
+export async function createSocialAgent(body: {
+  profileUrl: string;
+  pollSec?: number;
+}): Promise<{ ok: boolean; agent: SocialAgentRow }> {
+  return jsonOrThrow(
+    await fetch('/api/agents/social', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function deleteSocialAgent(id: string): Promise<{ ok: boolean }> {
+  return jsonOrThrow(
+    await fetch(`/api/agents/social?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   );
 }
 
