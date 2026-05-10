@@ -25,7 +25,7 @@ const MOCK_USDC_SRC = readFileSync(
   'utf8',
 );
 
-const SIGNAL_API = Bun.env.ARGUS_API ?? 'http://127.0.0.1:8787';
+const SIGNAL_API = Bun.env.ARGUS_API ?? 'http://127.0.0.1:8788';
 const TARGET_ADDR = '0xc0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff';
 const CLEAN_ADDR = '0xc1eanc1eanc1eanc1eanc1eanc1eanc1eanc1ea0';
 

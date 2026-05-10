@@ -29,6 +29,12 @@ The Vite dev server proxies:
 - `/gw/*` → `http://127.0.0.1:8788` (ens-resolver gateway)
 
 so the SPA fetches from same-origin paths and avoids any CORS dance.
+
+**Port mismatch:** `reset.sh` starts signal-api on **8788** and the ENS gateway on **8789**. If you use that script, start the dashboard with:
+
+`bun run dev:reset` (same as setting `VITE_API_TARGET` / `VITE_GW_TARGET` for ports **8788** / **8789**), or the equivalent `VITE_API_TARGET=http://127.0.0.1:8788 VITE_GW_TARGET=http://127.0.0.1:8789 bun run dev`.
+
+If `/api` points at the wrong process you may see **404** on `/access`; if nothing is listening on the proxy target you may see **500** with an empty body after connecting a wallet.
 For production you'd point `/api` and `/gw` at your hosted endpoints
 through a reverse proxy.
 

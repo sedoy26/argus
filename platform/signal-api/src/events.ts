@@ -9,7 +9,8 @@
 export type EventKind =
   | 'signal_received'   // a watcher submitted a signal
   | 'score_changed'     // TEE consensus score escalated or changed
-  | 'guardian_trigger'  // score crossed threshold — guardian should act
+  | 'guardian_trigger'  // score crossed threshold — guardian revokes approvals
+  | 'tx_blocked'        // SWAT-004 phishing TX intercepted before broadcast
   | 'boot'              // applet boot info snapshot
   | 'info';             // generic informational message
 

@@ -1,18 +1,30 @@
 // Watcher entrypoint.
 //
 // Configuration is loaded in priority order:
-//   1. ENS text records on watcher-sourcify.agents.<ARGUS_ENS_ROOT>
-//      (allows live network-wide config updates without redeploying)
-//   2. Environment variables (WATCHER_SUBMITTER, WATCHER_REPUTATION, …)
-//   3. Built-in defaults
+//   1. Environment variables when set (ARGUS_API, WATCHER_SUBMITTER, …)
+//      — ARGUS_API overrides ENS so a stale signal_api tunnel cannot
+//        hijack local demos.
+//   2. ENS text records on watcher-sourcify.agents.<ARGUS_ENS_ROOT>
+//   3. Built-in defaults — Sepolia FakeSwapNet demo + local .sol fallback
 //
 // ENS bootstrap requires SEPOLIA_RPC_URL (or RPC_URL) in env.
 // Set ENS_BOOTSTRAP=0 to skip ENS and use env-only config.
+
+import { join } from 'node:path';
 
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
 import { SourcifyHttp, type SourcifyHttpOptions } from './sourcify.ts';
 import { Watcher, type WatchTarget } from './watcher.ts';
+
+/** Demo FakeSwapNet on Sepolia (matches dashboard / guardian wiring). */
+const DEFAULT_FAKE_SWAP =
+  (Bun.env.FAKE_SWAPNET_ADDRESS ?? '0x3b38fe80891ec608829e941ef965e1c96d3460d6').toLowerCase();
+
+const DEFAULT_LOCAL_SOL = join(
+  import.meta.dir,
+  '../../../contracts/src/FakeSwapNet.sol',
+);
 
 const ENS_ROOT = Bun.env.ARGUS_ENS_ROOT ?? 'argus-security.eth';
 const ENS_BOOTSTRAP = Bun.env.ENS_BOOTSTRAP !== '0';
@@ -77,22 +89,39 @@ async function loadEnsConfig(): Promise<Partial<{
 }
 
 async function main(): Promise<void> {
-  const targetsEnv = Bun.env.WATCHER_TARGETS;
-  if (!targetsEnv) {
-    throw new Error(
-      'set WATCHER_TARGETS — comma-separated <chainId>:<address>[:<label>]',
-    );
-  }
+  const targetsEnv =
+    Bun.env.WATCHER_TARGETS ??
+    `11155111:${DEFAULT_FAKE_SWAP}:FakeSwapNet`;
 
   // --- ENS bootstrap ---
   const ensConfig = ENS_BOOTSTRAP ? await loadEnsConfig() : {};
 
+  const useLocalFallback = Bun.env.WATCHER_LOCAL_FALLBACK !== '0';
+  const localSolPath = Bun.env.WATCHER_LOCAL_SOL_PATH ?? DEFAULT_LOCAL_SOL;
+
+  const repEnv = Bun.env.WATCHER_REPUTATION;
+  const reputationFromEnv =
+    repEnv !== undefined && repEnv !== '' ? Number(repEnv) : undefined;
+
   const config = {
     targets: parseTargets(targetsEnv),
-    signalApi: ensConfig.signalApi ?? Bun.env.ARGUS_API ?? 'http://127.0.0.1:8787',
-    submitter: ensConfig.submitter ?? Bun.env.WATCHER_SUBMITTER ?? AGENT_ENS_NAME,
-    reputation: ensConfig.reputation ?? Number(Bun.env.WATCHER_REPUTATION ?? 90),
-    pollMs: Number(Bun.env.WATCHER_POLL_MS ?? 30_000),
+    // Explicit env wins over ENS (ENS may point at an old Cloudflare tunnel).
+    signalApi:
+      Bun.env.ARGUS_API ?? ensConfig.signalApi ?? 'http://127.0.0.1:8788',
+    submitter:
+      Bun.env.WATCHER_SUBMITTER ?? ensConfig.submitter ?? AGENT_ENS_NAME,
+    reputation: reputationFromEnv ?? ensConfig.reputation ?? 85,
+    pollMs: Number(Bun.env.WATCHER_POLL_MS ?? 60_000),
+    localFallbacks: useLocalFallback
+      ? [
+          {
+            chainId: 11155111,
+            address: DEFAULT_FAKE_SWAP,
+            filePath: localSolPath,
+            solName: 'FakeSwapNet.sol',
+          },
+        ]
+      : undefined,
   };
 
   const sourcifyOpts: SourcifyHttpOptions = {};
@@ -108,6 +137,9 @@ async function main(): Promise<void> {
     console.log(`  - ${t.chainId}:${t.address}${t.label ? ` (${t.label})` : ''}`);
   }
   console.log('[watcher] poll        ', config.pollMs, 'ms');
+  if (config.localFallbacks?.length) {
+    console.log('[watcher] local fallback enabled for Sepolia FakeSwapNet →', localSolPath);
+  }
 
   const w = new Watcher(config, sourcify);
   w.start();

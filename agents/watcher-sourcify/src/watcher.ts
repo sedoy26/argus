@@ -2,14 +2,28 @@
 //
 // For each monitored target (chainId + address) we:
 //   1. Fetch verified source from Sourcify (or the configured client).
-//   2. Run the SWAT detector against every .sol file.
-//   3. POST one CONFIRMED signal per (target, threat_type) detection
+//   2. If Sourcify has no match, optionally load a local .sol fallback
+//      (same bytecode as deployed demo — used when the live address
+//      is not yet published to sourcify.dev).
+//   3. Run the SWAT detector against every .sol file.
+//   4. POST one CONFIRMED signal per (target, threat_type) detection
 //      to signal-api. We dedupe submissions in-process so polling
 //      doesn't spam the API.
+
+import { readFileSync } from 'node:fs';
 
 import type { Detection, DetectorReport } from './detector.ts';
 import { detectAll } from './detector.ts';
 import type { SourcifyClient, SourcifyResult } from './sourcify.ts';
+
+/** When Sourcify returns no files, load this path for the given chain+address. */
+export interface LocalSourceFallback {
+  chainId: number;
+  address: string;
+  filePath: string;
+  /** Logical .sol name for detector output (default: basename of filePath). */
+  solName?: string;
+}
 
 export interface WatchTarget {
   chainId: number;
@@ -27,6 +41,8 @@ export interface WatcherConfig {
   reputation: number;
   /** Polling cadence in milliseconds. Set to 0 to run once. */
   pollMs: number;
+  /** Optional per-address local .sol when Sourcify has no entry. */
+  localFallbacks?: LocalSourceFallback[];
 }
 
 export interface SubmissionResult {
@@ -92,7 +108,18 @@ export class Watcher {
       return [];
     }
     if (!sources || sources.files.length === 0) {
-      return [];
+      const fb = this.tryLocalFallback(target);
+      if (fb) {
+        console.log(
+          `[watcher] ${tag}: no Sourcify files — using local fallback (${fb.source_url})`,
+        );
+        sources = fb;
+      } else {
+        console.log(
+          `[watcher] ${tag}: no verified sources on Sourcify (and no local fallback) — skip`,
+        );
+        return [];
+      }
     }
 
     const report: DetectorReport = detectAll(sources.files);
@@ -104,10 +131,19 @@ export class Watcher {
     const submissions: SubmissionResult[] = [];
     for (const d of report.detections) {
       const seenKey = `${target.chainId}:${target.address.toLowerCase()}:${d.threatType}`;
-      if (this.seen.has(seenKey)) continue;
+      if (this.seen.has(seenKey)) {
+        console.log(`[watcher] ${tag}: dedupe skip (${d.threatType} already submitted this session)`);
+        continue;
+      }
       this.seen.add(seenKey);
       const sub = await this.submit(target, sources, d);
       submissions.push(sub);
+      if (!sub.ok) {
+        this.seen.delete(seenKey);
+        console.error(
+          `[watcher] ${tag}: signal submit FAILED (${d.threatType}): ${sub.error ?? `HTTP ${sub.status}`}`,
+        );
+      }
     }
     return submissions;
   }
@@ -118,7 +154,7 @@ export class Watcher {
     d: Detection,
   ): Promise<SubmissionResult> {
     const evidence = {
-      source: 'sourcify',
+      source: sources.source_url?.startsWith('file://') ? 'sourcify+local' : 'sourcify',
       sourcify_status: sources.status,
       sourcify_url: sources.source_url,
       file: d.file,
@@ -175,5 +211,33 @@ export class Watcher {
       } (function=${d.function}, callKind=${d.callKind})`,
     );
     return { target, detection: d, ok: true, status: res.status, consensus };
+  }
+
+  private tryLocalFallback(target: WatchTarget): SourcifyResult | null {
+    const list = this.config.localFallbacks;
+    if (!list?.length) return null;
+    const addr = target.address.toLowerCase();
+    for (const fb of list) {
+      if (fb.chainId !== target.chainId) continue;
+      if (fb.address.toLowerCase() !== addr) continue;
+      try {
+        const content = readFileSync(fb.filePath, 'utf8');
+        const name =
+          fb.solName ??
+          fb.filePath.split(/[/\\]/).pop() ??
+          'Contract.sol';
+        return {
+          status: 'partial',
+          files: [{ name, content, path: fb.filePath }],
+          source_url: `file://${fb.filePath}`,
+        };
+      } catch (e) {
+        console.error(
+          `[watcher] local fallback read failed (${fb.filePath}): ${(e as Error).message}`,
+        );
+        return null;
+      }
+    }
+    return null;
   }
 }

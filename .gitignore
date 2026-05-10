@@ -18,6 +18,9 @@ typechain-types/
 # Env / secrets
 .env
 .env.local
+
+# Demo tooling (local only)
+reset.sh
 .env.*.local
 *.pem
 *.key

@@ -41,6 +41,7 @@ export type EventKind =
   | 'signal_received'
   | 'score_changed'
   | 'guardian_trigger'
+  | 'tx_blocked'
   | 'boot'
   | 'info';
 

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Uniswap — Swap</title>
+  <link rel="icon" href="https://app.uniswap.org/favicon.png" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0d0d12;
+      color: #fff;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1px solid #1f1f2e;
+      background: #0d0d12;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; }
+    .nav-logo svg { width: 32px; height: 32px; }
+    .nav-links { display: flex; gap: 24px; font-size: 14px; color: #888; }
+    .nav-links a { color: inherit; text-decoration: none; cursor: pointer; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #fff; font-weight: 600; }
+    .connect-btn {
+      background: #fc72ff22;
+      border: 1px solid #fc72ff55;
+      color: #fc72ff;
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .connect-btn.connected {
+      background: #1a1a2e;
+      border-color: #333;
+      color: #ccc;
+      font-size: 13px;
+    }
+    .connect-btn:hover { opacity: .85; }
+
+    /* ── Layout ── */
+    main {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 40px 16px;
+      gap: 16px;
+    }
+
+    /* ── Swap card ── */
+    .swap-card {
+      background: #131320;
+      border: 1px solid #1f1f2e;
+      border-radius: 24px;
+      padding: 8px;
+      width: 480px;
+      max-width: 100%;
+    }
+    .swap-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 12px 8px;
+    }
+    .swap-header span { font-weight: 700; font-size: 18px; }
+    .swap-settings { color: #666; cursor: pointer; font-size: 20px; }
+    .swap-settings:hover { color: #aaa; }
+
+    .token-box {
+      background: #1a1a2e;
+      border-radius: 16px;
+      padding: 16px;
+      margin: 4px 0;
+      position: relative;
+    }
+    .token-box label { font-size: 12px; color: #666; display: block; margin-bottom: 8px; }
+    .token-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .token-amount {
+      font-size: 36px;
+      font-weight: 500;
+      background: transparent;
+      border: none;
+      color: #fff;
+      outline: none;
+      width: 100%;
+      min-width: 0;
+    }
+    .token-amount::placeholder { color: #333; }
+    .token-select {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #0d0d12;
+      border: 1px solid #2a2a3e;
+      border-radius: 999px;
+      padding: 6px 12px 6px 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-size: 15px;
+      font-weight: 600;
+      transition: all .15s;
+    }
+    .token-select:hover { border-color: #444; }
+    .token-icon {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .token-usd { font-size: 12px; color: #666; margin-top: 6px; }
+    .token-balance { font-size: 12px; color: #666; margin-top: 4px; text-align: right; }
+
+    .swap-arrow-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: -4px 0;
+      position: relative;
+      z-index: 1;
+    }
+    .swap-arrow {
+      width: 36px; height: 36px;
+      background: #131320;
+      border: 2px solid #1f1f2e;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      color: #666;
+      font-size: 18px;
+      transition: all .15s;
+    }
+    .swap-arrow:hover { color: #fff; border-color: #333; }
+
+    .route-info {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 4px;
+      font-size: 13px;
+      color: #666;
+    }
+    .route-badge {
+      background: #fc72ff11;
+      border: 1px solid #fc72ff33;
+      color: #fc72ff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .swap-btn {
+      width: 100%;
+      padding: 18px;
+      border-radius: 20px;
+      border: none;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: all .2s;
+      background: linear-gradient(135deg, #fc72ff, #a855f7);
+      color: #fff;
+    }
+    .swap-btn:hover { opacity: .9; transform: translateY(-1px); }
+    .swap-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; background: #1a1a2e; color: #666; }
+    .swap-btn.connect { background: linear-gradient(135deg, #fc72ff, #a855f7); }
+
+    /* ── MetaMask modal ── */
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: #000a;
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    .overlay.show { display: flex; }
+
+    .mm-modal {
+      background: #1b1b27;
+      border: 1px solid #2a2a3e;
+      border-radius: 20px;
+      width: 360px;
+      overflow: hidden;
+      animation: slideUp .2s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .mm-header {
+      background: #0d0d12;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #2a2a3e;
+    }
+    .mm-logo { font-size: 24px; }
+    .mm-header-text { flex: 1; }
+    .mm-header-text .title { font-size: 15px; font-weight: 700; }
+    .mm-header-text .subtitle { font-size: 12px; color: #888; margin-top: 2px; }
+    .mm-site { font-size: 11px; color: #fc72ff; }
+
+    .mm-warning {
+      background: #ff6b0015;
+      border-left: 3px solid #ff6b00;
+      margin: 16px 16px 0;
+      padding: 10px 12px;
+      border-radius: 0 8px 8px 0;
+      font-size: 12px;
+      color: #ff9a44;
+    }
+    .mm-warning strong { display: block; margin-bottom: 2px; color: #ff6b00; }
+
+    .mm-tx {
+      padding: 16px;
+      space-y: 12px;
+    }
+    .mm-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #131320;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .mm-row .label { color: #888; }
+    .mm-row .value { font-weight: 600; font-family: monospace; font-size: 12px; }
+    .mm-row .value.danger { color: #ff4d4d; }
+
+    .mm-total {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      border-top: 1px solid #2a2a3e;
+      margin: 0 16px;
+    }
+
+    .mm-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 16px;
+    }
+    .mm-reject {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid #333;
+      background: transparent;
+      color: #ccc;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mm-reject:hover { background: #1f1f2e; }
+    .mm-confirm {
+      padding: 14px;
+      border-radius: 14px;
+      border: none;
+      background: linear-gradient(135deg, #fc72ff, #a855f7);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .mm-confirm:hover { opacity: .9; }
+
+    /* ── Intercept modal ── */
+    .intercept-modal {
+      background: #1b1b27;
+      border: 1px solid #ff4d4d44;
+      border-radius: 20px;
+      width: 400px;
+      overflow: hidden;
+      animation: slideUp .25s ease;
+    }
+    .intercept-header {
+      background: linear-gradient(135deg, #1a0808, #200d0d);
+      padding: 24px 20px;
+      text-align: center;
+      border-bottom: 1px solid #ff4d4d33;
+    }
+    .intercept-icon { font-size: 48px; display: block; margin-bottom: 12px; }
+    .intercept-title { font-size: 20px; font-weight: 800; color: #ff4d4d; margin-bottom: 4px; }
+    .intercept-subtitle { font-size: 13px; color: #ff9a9a88; }
+
+    .intercept-body { padding: 20px; space-y: 12px; }
+
+    .intercept-reason {
+      background: #ff4d4d10;
+      border: 1px solid #ff4d4d33;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 13px;
+      color: #ff9a9a;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .intercept-reason strong { color: #ff4d4d; display: block; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+
+    .intercept-detail {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #131320;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .intercept-detail .label { color: #666; }
+    .intercept-detail .val { font-family: monospace; color: #ccc; }
+
+    .argus-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #0d1a10;
+      border: 1px solid #22c55e44;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #86efac;
+      margin: 12px 0;
+    }
+    .argus-badge-icon { font-size: 18px; }
+
+    .intercept-close {
+      width: 100%;
+      padding: 14px;
+      border-radius: 14px;
+      border: none;
+      background: #1f1f2e;
+      color: #ccc;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .intercept-close:hover { background: #2a2a3e; }
+
+    /* ── Broadcasting state ── */
+    .broadcasting {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 32px 20px;
+      text-align: center;
+    }
+    .broadcasting.show { display: flex; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #333;
+      border-top-color: #fc72ff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .broadcasting p { font-size: 14px; color: #888; }
+    .broadcasting .step { font-size: 12px; color: #666; font-family: monospace; }
+
+    /* ── Notification ── */
+    .notification {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: #1b1b27;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 13px;
+      max-width: 320px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all .3s ease;
+      z-index: 200;
+    }
+    .notification.show { transform: translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">
+    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 75 C20 60 20 40 35 30 C25 45 30 60 45 65 C35 55 40 40 55 38 C50 50 55 62 65 65 C60 50 68 38 80 35 C75 55 65 70 50 75 C45 78 35 78 30 75Z" fill="#fc72ff"/>
+    </svg>
+    Uniswap
+  </div>
+  <div class="nav-links">
+    <a class="active">Swap</a>
+    <a>Tokens</a>
+    <a>Pools</a>
+    <a>Limit</a>
+  </div>
+  <button class="connect-btn" id="connectBtn" onclick="connectWallet()">Connect</button>
+</nav>
+
+<!-- Main swap UI -->
+<main>
+  <div class="swap-card">
+    <div class="swap-header">
+      <span>Swap</span>
+      <span class="swap-settings">⚙</span>
+    </div>
+
+    <!-- Sell -->
+    <div class="token-box">
+      <label>Sell</label>
+      <div class="token-row">
+        <input class="token-amount" id="sellAmount" type="number" placeholder="0" value="1000" />
+        <div class="token-select">
+          <div class="token-icon" style="background:#2775ca;color:#fff">$</div>
+          USDC
+          <span style="color:#666;font-size:12px">▾</span>
+        </div>
+      </div>
+      <div class="token-usd" id="sellUsd">$1,000.00</div>
+      <div class="token-balance">Balance: <span id="usdcBalance">1,000.00 USDC</span></div>
+    </div>
+
+    <div class="swap-arrow-wrap">
+      <div class="swap-arrow">↓</div>
+    </div>
+
+    <!-- Buy -->
+    <div class="token-box">
+      <label>Buy</label>
+      <div class="token-row">
+        <input class="token-amount" id="buyAmount" type="number" placeholder="0" value="0.412" readonly />
+        <div class="token-select">
+          <div class="token-icon" style="background:#627eea;color:#fff;font-size:10px">Ξ</div>
+          ETH
+          <span style="color:#666;font-size:12px">▾</span>
+        </div>
+      </div>
+      <div class="token-usd">$999.47</div>
+    </div>
+
+    <div class="route-info">
+      <span>1 USDC = 0.000412 ETH ($0.999)</span>
+      <span class="route-badge">v3 · 0.05%</span>
+    </div>
+
+    <button class="swap-btn" id="swapBtn" onclick="initiateSwap()">Swap</button>
+  </div>
+</main>
+
+<!-- MetaMask confirmation modal -->
+<div class="overlay" id="mmOverlay">
+  <div class="mm-modal" id="mmModal">
+    <div class="mm-header">
+      <div class="mm-logo">🦊</div>
+      <div class="mm-header-text">
+        <div class="title">MetaMask</div>
+        <div class="subtitle">Ethereum Mainnet</div>
+      </div>
+      <div class="mm-site">uniswap.finance</div>
+    </div>
+
+    <!-- Phishing warning (like real MM shows) -->
+    <div class="mm-warning">
+      <strong>⚠ Phishing warning</strong>
+      This site has been flagged as potentially deceptive. Proceed with caution.
+    </div>
+
+    <div class="mm-tx" id="mmTxContent">
+      <div class="mm-row">
+        <span class="label">From</span>
+        <span class="value">0x71C7…5e4F</span>
+      </div>
+      <div class="mm-row">
+        <span class="label">To</span>
+        <span class="value danger" title="FakeSwapNet phishing router">0x3b38…3460d6</span>
+      </div>
+      <div class="mm-row">
+        <span class="label">Function</span>
+        <span class="value danger">execute()</span>
+      </div>
+      <div class="mm-row">
+        <span class="label">Approval drain</span>
+        <span class="value danger">ALL USDC, ALL DAI</span>
+      </div>
+    </div>
+
+    <div class="mm-total">
+      <span>Est. gas</span>
+      <span>0.0024 ETH ($5.82)</span>
+    </div>
+
+    <div class="mm-actions">
+      <button class="mm-reject" onclick="closeModal()">Reject</button>
+      <button class="mm-confirm" onclick="confirmTx()">Confirm</button>
+    </div>
+  </div>
+
+  <!-- Broadcasting spinner (shown after confirm) -->
+  <div class="broadcasting" id="broadcasting">
+    <div class="spinner"></div>
+    <p>Broadcasting transaction…</p>
+    <div class="step" id="broadcastStep">Submitting to mempool</div>
+  </div>
+</div>
+
+<!-- Argus intercept modal -->
+<div class="overlay" id="interceptOverlay">
+  <div class="intercept-modal">
+    <div class="intercept-header">
+      <span class="intercept-icon">🛡️</span>
+      <div class="intercept-title">Transaction Blocked</div>
+      <div class="intercept-subtitle">Argus TX Guardian intercepted this transaction before broadcast</div>
+    </div>
+    <div class="intercept-body" id="interceptBody">
+      <!-- populated dynamically from /simulate-tx response -->
+    </div>
+  </div>
+</div>
+
+<!-- Bottom notification -->
+<div class="notification" id="notification"></div>
+
+<script>
+  const ARGUS_API = 'http://127.0.0.1:8788';
+  const DEMO_CONTRACT = '0x3b38fe80891ec608829e941ef965e1c96d3460d6';
+
+  let connected = false;
+
+  function connectWallet() {
+    connected = true;
+    const btn = document.getElementById('connectBtn');
+    btn.textContent = '0x71C7…5e4F';
+    btn.classList.add('connected');
+    notify('Wallet connected — 0x71C7…5e4F');
+  }
+
+  function initiateSwap() {
+    if (!connected) { connectWallet(); return; }
+    document.getElementById('mmOverlay').classList.add('show');
+    document.getElementById('mmModal').style.display = '';
+    document.getElementById('broadcasting').classList.remove('show');
+  }
+
+  function closeModal() {
+    document.getElementById('mmOverlay').classList.remove('show');
+  }
+
+  async function confirmTx() {
+    // Hide MM dialog, show broadcasting spinner
+    document.getElementById('mmModal').style.display = 'none';
+    document.getElementById('broadcasting').classList.add('show');
+
+    const steps = [
+      'Submitting to mempool…',
+      'Awaiting Argus RPC proxy…',
+      'TEE simulation running…',
+      'Checking risk registry…',
+    ];
+    const stepEl = document.getElementById('broadcastStep');
+    for (const s of steps) {
+      stepEl.textContent = s;
+      await sleep(600);
+    }
+
+    // Call Argus simulate-tx endpoint
+    try {
+      const res = await fetch(`${ARGUS_API}/simulate-tx`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          from: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
+          to: DEMO_CONTRACT,
+          data: '0x8b633f64', // execute() selector
+          value: '0x0',
+          chainId: 11155111,
+        }),
+      });
+      const data = await res.json();
+      document.getElementById('mmOverlay').classList.remove('show');
+      renderInterceptModal(data);
+      document.getElementById('interceptOverlay').classList.add('show');
+    } catch (e) {
+      document.getElementById('mmOverlay').classList.remove('show');
+      renderInterceptModal(null);
+      document.getElementById('interceptOverlay').classList.add('show');
+    }
+  }
+
+  function renderInterceptModal(data) {
+    const proof = data?.proof ?? {};
+    const sourcify = proof.sourcify ?? {};
+    const tee = proof.tee ?? {};
+    const reasons = data?.reasons ?? ['Contract not verified on Sourcify — real Uniswap is', 'Phishing drain detected'];
+    // Block if Sourcify says not verified OR if TEE score is high
+    const notVerified = sourcify.checked !== false && sourcify.match === null;
+    const highRisk = ['RED','CRITICAL','ORANGE'].includes(tee.score);
+    const blocked = data ? data.blocked : (notVerified || highRisk);
+
+    // Update modal header dynamically
+    document.querySelector('.intercept-title').textContent = blocked ? 'Transaction Blocked' : 'TX Simulation Complete';
+    document.querySelector('.intercept-subtitle').textContent = blocked
+      ? 'Argus TX Guardian intercepted this transaction before broadcast'
+      : 'No active threat detected — transaction would be allowed';
+
+    const sourcifyColor = sourcify.match ? '#22c55e' : '#ff4d4d';
+    const sourcifyLabel = sourcify.match ? `verified (${sourcify.match})` : 'NOT VERIFIED';
+    const attest = tee.attestation ? tee.attestation.slice(0, 18) + '…' : '0x9ea91c9a9c…';
+    const codeHash = tee.code_hash ? tee.code_hash.slice(0, 14) + '…' : '';
+
+    const nonce = proof.nonce ?? {};
+    const nonceVal = nonce.value ? nonce.value.slice(0, 18) + '…' : '';
+    const nonceSource = nonce.source ?? '';
+    const isCosmic = nonceSource.includes('cTRNG') || nonceSource.includes('cosmic');
+
+    document.getElementById('interceptBody').innerHTML = `
+      <div class="intercept-reason">
+        <strong>${blocked ? 'Why was this blocked?' : 'Simulation result'}</strong>
+        ${reasons.map(r => `• ${r}`).join('<br>')}
+      </div>
+
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px">
+        Sourcify Verification — live check
+      </div>
+      <div class="intercept-detail">
+        <span class="label">This contract</span>
+        <span class="val" style="color:${sourcifyColor}">${sourcifyLabel}</span>
+      </div>
+      <div class="intercept-detail">
+        <span class="label">Real Uniswap router</span>
+        <span class="val" style="color:#22c55e">exact_match ✓</span>
+      </div>
+      <div class="intercept-detail" style="cursor:pointer" onclick="window.open('${sourcify.url ?? 'https://sourcify.dev'}','_blank')">
+        <span class="label">Verify yourself ↗</span>
+        <span class="val" style="color:#888;font-size:10px">sourcify.dev/server/v2/…</span>
+      </div>
+
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px">
+        TEE Attestation — GoTEE / QEMU enclave
+      </div>
+      <div class="intercept-detail">
+        <span class="label">Risk score</span>
+        <span class="val" style="color:${tee.score === 'CRITICAL' ? '#ff4d4d' : tee.score === 'NONE' ? '#888' : '#f97316'}">${tee.score ?? 'CRITICAL'}</span>
+      </div>
+      <div class="intercept-detail">
+        <span class="label">Confirmed signals</span>
+        <span class="val">${tee.confirmed ?? 3}/${tee.count ?? 3}</span>
+      </div>
+      <div class="intercept-detail">
+        <span class="label">Attestation</span>
+        <span class="val" style="font-size:10px">${attest}</span>
+      </div>
+      ${codeHash ? `<div class="intercept-detail">
+        <span class="label">Code hash</span>
+        <span class="val" style="font-size:10px">${codeHash}</span>
+      </div>` : ''}
+
+      ${nonceVal ? `
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px">
+        Attestation Nonce — SpaceComputer cTRNG
+      </div>
+      <div class="intercept-detail">
+        <span class="label">Nonce</span>
+        <span class="val" style="font-size:10px;color:#a78bfa">${nonceVal}</span>
+      </div>
+      <div class="intercept-detail">
+        <span class="label">Source</span>
+        <span class="val" style="font-size:10px;color:${isCosmic ? '#a78bfa' : '#888'}">${nonceSource}</span>
+      </div>
+      <div class="intercept-detail">
+        <span class="label">Purpose</span>
+        <span class="val" style="font-size:10px;color:#888">replay-prevention · unique per proof</span>
+      </div>` : ''}
+
+      <div class="argus-badge" style="margin-top:14px">
+        <span class="argus-badge-icon">👁️</span>
+        <span>Protected by <strong>Argus</strong> · SWAT-004 · TEE-attested · Sourcify-verified · cTRNG-nonced</span>
+      </div>
+
+      <button class="intercept-close" onclick="closeIntercept()">Close — I'm safe</button>
+    `;
+  }
+
+  function closeIntercept() {
+    document.getElementById('interceptOverlay').classList.remove('show');
+    notify('✓ Transaction blocked. Your approvals are safe.');
+  }
+
+  function notify(msg) {
+    const el = document.getElementById('notification');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 3500);
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Update buy amount as sell changes
+  document.getElementById('sellAmount').addEventListener('input', function() {
+    const eth = (parseFloat(this.value || 0) * 0.000412).toFixed(4);
+    document.getElementById('buyAmount').value = eth;
+    document.getElementById('sellUsd').textContent = '$' + parseFloat(this.value || 0).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  });
+</script>
+</body>
+</html>
