@@ -452,7 +452,7 @@ function LandingPage({ onConnect }: { onConnect: () => Promise<void> }) {
       <AppBackdrop />
       <div className="relative z-10 w-full max-w-md">
         <div className="glass-surface glass-surface-hover px-8 py-10 text-center space-y-7 motion-safe:hover:-translate-y-0.5">
-          <ParallaxLogo className="h-40 w-40" intensity={14} />
+          <ParallaxLogo className="h-44 w-44 sm:h-48 sm:w-48" intensity={14} />
           <div>
             <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-amber-100 via-amber-300 to-amber-600 bg-clip-text text-transparent">
               Argus
@@ -531,48 +531,48 @@ function Header({
   const ok = health?.status === 'ok';
   return (
     <header className="glass-header sticky top-0 z-20 motion-safe:transition-shadow motion-safe:hover:shadow-[0_8px_40px_rgba(0,0,0,0.35)]">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between gap-y-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <BrandMark className="h-10 w-10" />
+      <div className="max-w-7xl mx-auto px-6 sm:px-8 py-5 flex flex-wrap items-center justify-between gap-y-4 gap-x-4">
+        <div className="flex items-center gap-4 min-w-0">
+          <BrandMark className="h-[3.25rem] w-[3.25rem] sm:h-14 sm:w-14" />
           <div className="min-w-0">
-            <div className="text-sm font-semibold tracking-tight text-amber-50">Argus</div>
-            <div className="text-xs text-(--color-argus-muted) truncate">the hundred-eyed guardian of Web3</div>
+            <div className="text-base sm:text-lg font-semibold tracking-tight text-amber-50">Argus</div>
+            <div className="text-xs sm:text-sm text-(--color-argus-muted) truncate">the hundred-eyed guardian of Web3</div>
           </div>
         </div>
 
         {/* Role switcher */}
-        <div className="flex items-center rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-0.5 text-xs font-medium shadow-inner shadow-black/20">
+        <div className="flex items-center rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-1 text-sm font-medium shadow-inner shadow-black/20">
           {showScoutTab && (
             <button type="button" onClick={() => onRoleChange('scout')}
-              className={`px-3 py-1.5 rounded-md transition ${role === 'scout' ? 'bg-amber-400/90 text-zinc-950' : 'text-(--color-argus-muted) hover:text-(--color-argus-text)'}`}>
+              className={`px-3.5 py-2 rounded-lg transition ${role === 'scout' ? 'bg-amber-400/90 text-zinc-950' : 'text-(--color-argus-muted) hover:text-(--color-argus-text)'}`}>
               Scout
             </button>
           )}
           <button type="button" onClick={() => onRoleChange('user')}
-            className={`px-3 py-1.5 rounded-md transition ${role === 'user' ? 'bg-sky-500/80 text-white' : 'text-(--color-argus-muted) hover:text-(--color-argus-text)'}`}>
+            className={`px-3.5 py-2 rounded-lg transition ${role === 'user' ? 'bg-sky-500/80 text-white' : 'text-(--color-argus-muted) hover:text-(--color-argus-text)'}`}>
             User
           </button>
           {showAdminTab && (
             <button type="button" onClick={() => onRoleChange('admin')}
-              className={`px-3 py-1.5 rounded-md transition ${role === 'admin' ? 'bg-violet-500/80 text-white' : 'text-(--color-argus-muted) hover:text-(--color-argus-text)'}`}>
+              className={`px-3.5 py-2 rounded-lg transition ${role === 'admin' ? 'bg-violet-500/80 text-white' : 'text-(--color-argus-muted) hover:text-(--color-argus-text)'}`}>
               Admin
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-3 text-xs flex-wrap justify-end">
+        <div className="flex items-center gap-3 text-sm flex-wrap justify-end">
           {wallet && (
-            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-md px-2.5 py-1 shadow-sm">
-              <span className="mono text-[10px] text-(--color-argus-muted) max-w-[120px] truncate" title={wallet}>{wallet.slice(0, 6)}…{wallet.slice(-4)}</span>
-              <button type="button" onClick={() => void onDisconnect()} className="text-[10px] text-rose-400 hover:text-rose-300">Log out</button>
+            <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-md px-3 py-1.5 shadow-sm">
+              <span className="mono text-xs text-(--color-argus-muted) max-w-[140px] truncate" title={wallet}>{wallet.slice(0, 6)}…{wallet.slice(-4)}</span>
+              <button type="button" onClick={() => void onDisconnect()} className="text-xs text-rose-400 hover:text-rose-300">Log out</button>
             </div>
           )}
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${ok ? 'bg-emerald-400' : 'bg-rose-500'}`} />
-            <span className="text-(--color-argus-muted)">bridge {health?.bridge ?? '—'}</span>
+            <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${ok ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+            <span className="text-(--color-argus-muted) text-xs sm:text-sm">bridge {health?.bridge ?? '—'}</span>
           </div>
           {boot && (
-            <div className="hidden sm:flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-4 text-xs sm:text-sm">
               <span className="text-(--color-argus-muted)">code <Hex value={boot.code_hash} len={5} /></span>
               <span className="text-(--color-argus-muted)">signals {boot.signal_count}/{boot.max_signals}</span>
             </div>

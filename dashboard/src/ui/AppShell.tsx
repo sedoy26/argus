@@ -104,9 +104,9 @@ export function ParallaxLogo({
 export function BrandMark({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`relative shrink-0 overflow-hidden rounded-xl bg-black/50 ring-1 ring-amber-400/25 shadow-[0_0_24px_rgba(251,191,36,0.12)] transition duration-300 ease-out hover:scale-105 hover:ring-amber-400/45 hover:shadow-[0_0_32px_rgba(251,191,36,0.22)] ${className}`}
+      className={`relative shrink-0 overflow-hidden rounded-2xl bg-black/50 ring-1 ring-amber-400/25 shadow-[0_0_28px_rgba(251,191,36,0.14)] transition duration-300 ease-out hover:scale-[1.04] hover:ring-amber-400/45 hover:shadow-[0_0_36px_rgba(251,191,36,0.24)] ${className}`}
     >
-      <img src={LOGO_SRC} alt="" className="h-full w-full object-contain p-0.5" />
+      <img src={LOGO_SRC} alt="" className="h-full w-full object-contain p-1" />
     </div>
   );
 }
