@@ -5,5 +5,5 @@ watchPatterns = ["/platform/ens-resolver/**"]
 startCommand = "bun run start"
 # Use `/` so deploy health does not depend on signal-api (see GET /health for full probe).
 healthcheckPath = "/"
-healthcheckTimeout = 30
+healthcheckTimeout = 90
 restartPolicyType = "on_failure"

@@ -33,7 +33,10 @@ client                          on-chain                          gateway
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/` | liveness (no upstream); used for Railway healthchecks |
-| GET | `/health` | gateway + signal-api status |
+| HEAD | `/` | same liveness, empty `200` body |
+| GET | `/healthz` | same JSON as `GET /` (optional alternate probe path) |
+| GET | `/health` | gateway + bounded signal-api `/health` probe |
+| HEAD | `/health` | empty `200` (probe-only; does not call signal-api) |
 | GET | `/lookup/:sender/:data.json` | EIP-3668 GET form |
 | POST | `/lookup` | EIP-3668 POST form, body `{sender, data}` |
 | GET | `/preview/:addr` | non-CCIP debug view of every record for an address |
@@ -42,6 +45,16 @@ Default port: 8788. Override with `PORT`. Override the signal-api
 base with `ARGUS_API` (default `http://127.0.0.1:8787`). Override the
 frontend URL template (used for the `url` text record) with
 `ARGUS_FRONTEND_URL_TEMPLATE` (default `https://argus.eth.limo/risk/{addr}`).
+
+### Railway (monorepo)
+
+In the gateway service settings:
+
+1. **Root directory:** `platform/ens-resolver` (isolated service root).
+2. **Config file path** (repo root, not relative to root directory): **`/platform/ens-resolver/railway.toml`**. If this is wrong, Railway ignores `healthcheckPath` here and deploy health checks may never hit `GET /`.
+3. **Health check path:** should be **`/`** (or **`/healthz`**) for a dependency-free probe. If the dashboard override still says `/health`, either switch it to **`/`** or ensure **`ARGUS_API`** is correct so `GET /health` finishes within the timeout.
+4. Do **not** set **`HOST=127.0.0.1`** on the service; the server always binds **`0.0.0.0`**.
+5. Railway probes with host **`healthcheck.railway.app`**; this app does not enforce host allowlists.
 
 ## Wildcard scheme
 
