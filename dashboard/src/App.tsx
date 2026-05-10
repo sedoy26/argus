@@ -102,8 +102,41 @@ const ROLE_COLOR = ['text-sky-300', 'text-rose-300', 'text-purple-300'];
 
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 const WALLET_SESSION = 'argus.wallet';
-/** Session key for EIP-6963 wallet uuid or legacy-* / window-ethereum (re-binds signing to the same extension). */
+/** Persisted EIP-6963 wallet uuid or `legacy-*` / `window-ethereum` (re-binds signing after reload). */
 const WALLET_PROVIDER_ID = 'argus.walletProviderId';
+
+/** Wallet session uses localStorage so refresh keeps you signed in; Log out clears these keys. */
+function walletStoreGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function walletStoreSet(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch { /* quota / private mode */ }
+}
+function walletStoreRemove(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch { /* ignore */ }
+}
+
+/** One-time migration from older sessionStorage-based sessions. */
+function migrateWalletSessionFromSessionStorage(): void {
+  try {
+    const a = sessionStorage.getItem(WALLET_SESSION);
+    const p = sessionStorage.getItem(WALLET_PROVIDER_ID);
+    if (a && p && !walletStoreGet(WALLET_SESSION)) {
+      walletStoreSet(WALLET_SESSION, a);
+      walletStoreSet(WALLET_PROVIDER_ID, p);
+    }
+    sessionStorage.removeItem(WALLET_SESSION);
+    sessionStorage.removeItem(WALLET_PROVIDER_ID);
+  } catch { /* ignore */ }
+}
 const ADDON_SOCIAL_SCOUT = 'argus.addon.socialScout';
 const WATCHED_KEY = 'argus.watched.v2';
 const DEMO_CONTRACT = '0x3b38fe80891ec608829e941ef965e1c96d3460d6';
@@ -2472,8 +2505,9 @@ function AgentRow({ agent, txStatus, onApprove, onRevoke }: {
 }
 
 function readWalletSession(): string | null {
+  migrateWalletSessionFromSessionStorage();
   try {
-    const raw = sessionStorage.getItem(WALLET_SESSION);
+    const raw = walletStoreGet(WALLET_SESSION);
     if (!raw || !ADDR_RE.test(raw)) return null;
     return raw.toLowerCase();
   } catch {
@@ -2486,8 +2520,8 @@ function readInitialWallet(): string | null {
   const addr = readWalletSession();
   if (!addr) return null;
   try {
-    if (!sessionStorage.getItem(WALLET_PROVIDER_ID)) {
-      sessionStorage.removeItem(WALLET_SESSION);
+    if (!walletStoreGet(WALLET_PROVIDER_ID)) {
+      walletStoreRemove(WALLET_SESSION);
       return null;
     }
   } catch {
@@ -2573,7 +2607,7 @@ export function App() {
   useEffect(() => {
     let pid: string | null = null;
     try {
-      pid = sessionStorage.getItem(WALLET_PROVIDER_ID);
+      pid = walletStoreGet(WALLET_PROVIDER_ID);
     } catch {
       setWalletTransportReady(true);
       return;
@@ -2584,18 +2618,44 @@ export function App() {
       return;
     }
     void (async () => {
-      const opts = await discoverWalletOptions();
-      const o = opts.find((x) => x.id === pid);
-      if (o) {
-        setActiveEthereumProvider(o.provider);
-        setWalletTransportReady(true);
-        return;
-      }
+      const tryBind = async (): Promise<boolean> => {
+        const opts = await discoverWalletOptions();
+        const matchById = opts.find((x) => x.id === pid);
+        const bind = (o: (typeof opts)[number]) => {
+          setActiveEthereumProvider(o.provider);
+          walletStoreSet(WALLET_PROVIDER_ID, o.id);
+          setWalletTransportReady(true);
+        };
+
+        if (matchById) {
+          bind(matchById);
+          return true;
+        }
+
+        // EIP-6963 UUIDs can differ after reload; find the same on-chain account.
+        for (const o of opts) {
+          try {
+            const accts = (await o.provider.request({ method: 'eth_accounts' })) as string[];
+            const a = accts[0]?.toLowerCase();
+            if (a && a === addr) {
+              bind(o);
+              return true;
+            }
+          } catch {
+            /* next */
+          }
+        }
+        return false;
+      };
+
+      if (await tryBind()) return;
+      // Injectors sometimes miss the first tick after a hard refresh.
+      await new Promise((r) => setTimeout(r, 450));
+      if (await tryBind()) return;
+
       clearActiveEthereumProvider();
-      try {
-        sessionStorage.removeItem(WALLET_PROVIDER_ID);
-        sessionStorage.removeItem(WALLET_SESSION);
-      } catch { /* ignore */ }
+      walletStoreRemove(WALLET_PROVIDER_ID);
+      walletStoreRemove(WALLET_SESSION);
       setWallet(null);
       setAccess(null);
       setWalletTransportReady(true);
@@ -2611,8 +2671,8 @@ export function App() {
       const only = opts[0]!;
       const addr = await connectWithEthereumProvider(only.provider);
       try {
-        sessionStorage.setItem(WALLET_SESSION, addr);
-        sessionStorage.setItem(WALLET_PROVIDER_ID, only.id);
+        walletStoreSet(WALLET_SESSION, addr);
+        walletStoreSet(WALLET_PROVIDER_ID, only.id);
       } catch { /* ignore */ }
       roleInitForWallet.current = null;
       setWallet(addr);
@@ -2628,8 +2688,8 @@ export function App() {
     try {
       const addr = await connectWithEthereumProvider(opt.provider);
       try {
-        sessionStorage.setItem(WALLET_SESSION, addr);
-        sessionStorage.setItem(WALLET_PROVIDER_ID, opt.id);
+        walletStoreSet(WALLET_SESSION, addr);
+        walletStoreSet(WALLET_PROVIDER_ID, opt.id);
       } catch { /* ignore */ }
       roleInitForWallet.current = null;
       setWalletPickerOpen(false);
@@ -2641,10 +2701,8 @@ export function App() {
 
   const clearWalletSession = useCallback(() => {
     accessFetchGen.current++;
-    try {
-      sessionStorage.removeItem(WALLET_SESSION);
-      sessionStorage.removeItem(WALLET_PROVIDER_ID);
-    } catch { /* ignore */ }
+    walletStoreRemove(WALLET_SESSION);
+    walletStoreRemove(WALLET_PROVIDER_ID);
     clearActiveEthereumProvider();
     roleInitForWallet.current = null;
     setWallet(null);
@@ -2682,9 +2740,7 @@ export function App() {
       }
       const next = list[0]?.toLowerCase();
       if (next && /^0x[0-9a-f]{40}$/.test(next)) {
-        try {
-          sessionStorage.setItem(WALLET_SESSION, next);
-        } catch { /* ignore */ }
+        walletStoreSet(WALLET_SESSION, next);
         roleInitForWallet.current = null;
         setWallet(next);
       }
