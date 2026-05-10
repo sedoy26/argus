@@ -625,13 +625,13 @@ function WalletPickerModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <button
         type="button"
-        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+        className="absolute inset-0 glass-modal-backdrop"
         aria-label="Close"
         onClick={() => {
           if (!busyId) onClose();
         }}
       />
-      <div className="relative z-10 glass-surface max-w-sm w-full p-6 space-y-4 border border-white/10 shadow-2xl">
+      <div className="relative z-10 glass-modal-panel max-w-sm w-full p-6 space-y-4 shadow-2xl">
         <div className="flex justify-between items-start gap-3">
           <h2 className="text-sm font-semibold text-(--color-argus-text)">Choose a wallet</h2>
           <button
@@ -1538,7 +1538,7 @@ function RoleApplicationsRail({
 
       {open && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-5 sm:p-6 bg-black/55 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-5 sm:p-6 glass-modal-backdrop"
           role="dialog"
           aria-modal="true"
           aria-labelledby="role-apply-title"
@@ -1547,7 +1547,7 @@ function RoleApplicationsRail({
           }}
         >
           <div
-            className="w-full max-w-lg glass-surface border-violet-500/30 p-6 sm:p-7 space-y-4 shadow-2xl"
+            className="w-full max-w-lg glass-modal-panel border-violet-500/45 p-6 sm:p-7 space-y-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
