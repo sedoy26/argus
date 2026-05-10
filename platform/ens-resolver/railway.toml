@@ -1,5 +1,9 @@
 [build]
-watchPatterns = ["/platform/ens-resolver/**"]
+# Use a repo-wide glob so GitHub autodeploy never "skips" this service. Narrow
+# patterns like `/platform/ens-resolver/**` have repeatedly failed to match the
+# commit file list (root directory + Railway matcher quirks), which blocks
+# shipping gateway fixes until someone runs "Deploy latest" by hand.
+watchPatterns = ["**"]
 
 [deploy]
 startCommand = "bun run start"
