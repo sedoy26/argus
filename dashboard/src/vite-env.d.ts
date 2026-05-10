@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_GATEWAY_URL?: string;
   /** ENS wildcard parent for `[addr].<parent>` CCIP demo (default risks.argus-security.eth). */
   readonly VITE_ARGUS_ENS_PARENT?: string;
+  /** Sepolia `ArgusRegistry` contract (0x + 40 hex). Build-time; optional `localStorage` ARGUS_REGISTRY_ADDRESS_OVERRIDE in dev. */
+  readonly VITE_ARGUS_REGISTRY_ADDRESS?: string;
 }
 
 interface ImportMeta {

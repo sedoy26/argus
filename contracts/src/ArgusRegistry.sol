@@ -59,6 +59,7 @@ contract ArgusRegistry {
     error NotRegistered();
     error AlreadyActive();
     error NotPending();
+    error NotRevoked();
     error InvalidReputation();
 
     // ── Constructor ──────────────────────────────────────────────────────────
@@ -150,6 +151,19 @@ contract ArgusRegistry {
         if (!_registered[agent]) revert NotRegistered();
         _agents[agent].status = Status.REVOKED;
         emit AgentRevoked(agent, reason);
+    }
+
+    /// @notice Restore revoked agents to ACTIVE (demo reset / reinstatement). Owner-only batch.
+    function restoreAgents(address[] calldata agentList) external onlyOwner {
+        for (uint256 i; i < agentList.length; ++i) {
+            address agent = agentList[i];
+            if (!_registered[agent]) revert NotRegistered();
+            Agent storage a = _agents[agent];
+            if (a.status != Status.REVOKED) revert NotRevoked();
+            a.status = Status.ACTIVE;
+            a.approvedAt = block.timestamp;
+            emit AgentApproved(agent, a.role, a.ensName);
+        }
     }
 
     /// @notice Update an agent's reputation score (0-100).

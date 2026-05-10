@@ -25,6 +25,7 @@ import {
   deleteSocialAgent,
   listSocialAgents,
   walletPersonalSign,
+  argusRegistryAddress,
   type AccessInfo,
   type EnrollmentRow,
   type IntelResult,
@@ -50,10 +51,9 @@ import {
 import { ensureSepoliaChain } from './sepoliaWallet';
 
 // ---------------------------------------------------------------------------
-// ArgusRegistry on-chain client
+// ArgusRegistry on-chain client (address: `argusRegistryAddress()` in api.ts)
 // ---------------------------------------------------------------------------
 
-const REGISTRY_ADDRESS = '0xc91Ed23CF4945b26a4ff510295A105677D66F1EB' as const;
 const SEPOLIA_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
 
 const REGISTRY_ABI = [
@@ -70,6 +70,13 @@ const REGISTRY_ABI = [
   ]}] },
   { name: 'approveAgent', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'agent', type: 'address' }], outputs: [] },
   { name: 'revokeAgent',  type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'agent', type: 'address' }, { name: 'reason', type: 'string' }], outputs: [] },
+  {
+    name: 'restoreAgents',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'agentList', type: 'address[]' }],
+    outputs: [],
+  },
   { name: 'owner', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
 ] as const satisfies Abi;
 
@@ -1447,7 +1454,7 @@ function RegistryExplorerStrip() {
     void (async () => {
       try {
         const raw = await publicClient.readContract({
-          address: REGISTRY_ADDRESS,
+          address: argusRegistryAddress(),
           abi: REGISTRY_ABI,
           functionName: 'allAgents',
         });
@@ -2028,8 +2035,8 @@ function AdminView({
     setError('');
     try {
       const [rawAgents, ownerAddr] = await Promise.all([
-        publicClient.readContract({ address: REGISTRY_ADDRESS, abi: REGISTRY_ABI, functionName: 'allAgents' }),
-        publicClient.readContract({ address: REGISTRY_ADDRESS, abi: REGISTRY_ABI, functionName: 'owner' }),
+        publicClient.readContract({ address: argusRegistryAddress(), abi: REGISTRY_ABI, functionName: 'allAgents' }),
+        publicClient.readContract({ address: argusRegistryAddress(), abi: REGISTRY_ABI, functionName: 'owner' }),
       ]);
       setAgents(rawAgents as RegistryAgent[]);
       setOwner(ownerAddr as string);
@@ -2072,7 +2079,7 @@ function AdminView({
 
       const txHash = await eth.request({
         method: 'eth_sendTransaction',
-        params: [{ from, to: REGISTRY_ADDRESS, data }],
+        params: [{ from, to: argusRegistryAddress(), data }],
       }) as string;
 
       setTxStatus(prev => ({ ...prev, [agentAddr]: `sent: ${txHash.slice(0, 18)}…` }));
@@ -2103,7 +2110,61 @@ function AdminView({
         const message = buildAdminDemoResetMessage({ nonce });
         const signature = await walletPersonalSign(wallet, message);
         const res = await postDemoReset({ adminAddress: wallet, nonce, signature });
-        setDemoResetMsg(res.note ?? 'Hosted demo state cleared.');
+        let msg = res.note ?? 'Hosted demo state cleared.';
+
+        /** Re-activate REVOKED registry rows in one tx (ArgusRegistry.restoreAgents). */
+        try {
+          const [rawAgents, ownerAddr] = await Promise.all([
+            publicClient.readContract({
+              address: argusRegistryAddress(),
+              abi: REGISTRY_ABI,
+              functionName: 'allAgents',
+            }),
+            publicClient.readContract({
+              address: argusRegistryAddress(),
+              abi: REGISTRY_ABI,
+              functionName: 'owner',
+            }),
+          ]);
+          const list = rawAgents as RegistryAgent[];
+          const revoked = list.filter((a) => a.status === 2).map((a) => a.addr as `0x${string}`);
+          const ownerLc = (ownerAddr as string).toLowerCase();
+          const walletLc = wallet.toLowerCase();
+          if (revoked.length > 0) {
+            if (walletLc !== ownerLc) {
+              msg += ` On-chain: ${revoked.length} revoked agent(s) — connect registry owner wallet (${(ownerAddr as string).slice(0, 8)}…) and reset again to restore them.`;
+            } else {
+              const eth = getActiveEthereumProvider();
+              if (!eth) {
+                msg += ` On-chain: ${revoked.length} revoked agent(s) — connect a wallet to send restoreAgents.`;
+              } else {
+                await ensureSepoliaChain(eth);
+                const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as string[];
+                const from = accounts[0]?.toLowerCase();
+                if (!from || from !== ownerLc) {
+                  msg += ` On-chain: active wallet is not registry owner — switch to owner to restore ${revoked.length} revoked agent(s).`;
+                } else {
+                  const { encodeFunctionData } = await import('viem');
+                  const data = encodeFunctionData({
+                    abi: REGISTRY_ABI,
+                    functionName: 'restoreAgents',
+                    args: [revoked],
+                  });
+                  await eth.request({
+                    method: 'eth_sendTransaction',
+                    params: [{ from: accounts[0], to: argusRegistryAddress(), data }],
+                  });
+                  msg += ` Restored ${revoked.length} revoked agent(s) on Sepolia.`;
+                  setTimeout(() => void fetchRegistry(), 4000);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          msg += ` Registry restore: ${(e as Error).message?.slice(0, 140) ?? 'failed'} — ensure ArgusRegistry is deployed with restoreAgents().`;
+        }
+
+        setDemoResetMsg(msg);
         await onAccessRefresh();
         onDemoReset();
       } catch (e) {
@@ -2151,7 +2212,7 @@ function AdminView({
             BigInt(75),
           ],
         });
-        const txHash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: REGISTRY_ADDRESS, data }] }) as string;
+        const txHash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: argusRegistryAddress(), data }] }) as string;
         setTxStatus(prev => ({ ...prev, register: `sent: ${txHash.slice(0, 18)}…` }));
         setRegisterOpen(false);
         setRegAddr(''); setRegEns(''); setRegSpecialty('');
@@ -2170,7 +2231,7 @@ function AdminView({
           <h1 className="text-lg font-semibold">Agent Registry</h1>
           <p className="text-sm text-(--color-argus-muted) mt-1">
             Manage on-chain agents — approve scouts, guardians & watchers.
-            <span className="ml-2 mono text-[10px] text-violet-400">{REGISTRY_ADDRESS.slice(0, 10)}…</span>
+            <span className="ml-2 mono text-[10px] text-violet-400">{argusRegistryAddress().slice(0, 10)}…</span>
           </p>
           {owner && (
             <p className="text-[11px] text-(--color-argus-muted) mt-1">
@@ -2294,7 +2355,8 @@ function AdminView({
         <div className="text-sm font-medium text-amber-200/95">Hosted demo environment</div>
         <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
           Clears signal-api in-memory scores, the live event feed, social pollers, and demo enrollments.
-          In standalone mode consensus returns to NONE. Guardian revoke on Sepolia is not undone — re-approve MockUSDC with cast if needed.
+          In standalone mode consensus returns to NONE. If your wallet is the registry owner, revoked agents are set back to ACTIVE in one on-chain tx.
+          Token approvals revoked by the guardian are not undone — run <span className="mono">scripts/reset-sepolia-approvals.sh</span> to re-approve MockUSDC for the drain demo.
         </p>
         <button
           type="button"

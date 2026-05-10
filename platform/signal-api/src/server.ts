@@ -663,7 +663,9 @@ async function handleTelemetry(req: Request): Promise<Response> {
  * - `x-argus-demo-reset` header = env `ARGUS_DEMO_RESET_SECRET` (scripts / CI), or
  * - JSON body `{ adminAddress, nonce, signature }` with admin EIP-191 over `buildAdminDemoResetMessage` (dashboard).
  *
- * On-chain approvals are not changed — use `scripts/reset-sepolia-approvals.sh` (cast).
+ * On-chain token approvals are not changed — use `scripts/reset-sepolia-approvals.sh` (cast).
+ * Revoked ArgusRegistry agents are restored by the **dashboard** after this call (owner wallet),
+ * not by signal-api.
  */
 async function handleDemoReset(req: Request): Promise<Response> {
   let body: Record<string, unknown> = {};

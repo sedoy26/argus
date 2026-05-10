@@ -119,7 +119,7 @@ Present in-tree (non-exhaustive):
 
 - **`FakeSwapNet.sol`**, **`MockUSDC.sol`** — vulnerable / clean demo targets for Sourcify-style analysis.
 - **`ArgusRiskResolver.sol`** — ENS wildcard + CCIP-Read resolver pattern.
-- **`ArgusRegistry.sol`** — agent registry used by the dashboard’s Sepolia client (address in dashboard source).
+- **`ArgusRegistry.sol`** — agent registry used by the dashboard’s Sepolia client (`VITE_ARGUS_REGISTRY_ADDRESS` or default in `dashboard/src/api.ts`).
 
 Deploy / seed scripts exist under `contracts/script/` (e.g. `Deploy.s.sol`, `SeedAgents.s.sol`). Root README still mentions **RecoveryVault** as part of the vision; that contract is **not** currently under `contracts/src/` as a file — treat as **roadmap** unless added.
 

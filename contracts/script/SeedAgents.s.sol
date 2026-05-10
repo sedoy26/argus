@@ -17,15 +17,18 @@ import {ArgusRegistry} from "../src/ArgusRegistry.sol";
 ///   3. SCOUT   — CertiK scout (demo)       (Status: PENDING — approve via Admin UI)
 ///
 /// Set env vars to override defaults:
+///   ARGUS_REGISTRY_ADDRESS — deployed ArgusRegistry (default: current Sepolia demo)
 ///   SCOUT_ADDRESS    — deployer's scout wallet (defaults to GUARDIAN_EXTRA_KEYS[0])
 ///   GUARDIAN_ADDRESS — guardian KMS wallet
 ///   CERTIK_ADDRESS   — pending scout demo wallet
 
 contract SeedAgents is Script {
-    address constant REGISTRY = 0xc91Ed23CF4945b26a4ff510295A105677D66F1EB;
-
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
+
+        address registryAddr = vm.envExists("ARGUS_REGISTRY_ADDRESS")
+            ? vm.parseAddress(vm.envString("ARGUS_REGISTRY_ADDRESS"))
+            : address(0xc91Ed23CF4945b26a4ff510295A105677D66F1EB);
 
         // Defaults to the first guardian extra wallet as scout demo address
         address scout    = vm.envOr("SCOUT_ADDRESS",    address(0xD4aC45F3a92DABF81bCB3BF2ce08bf7383fdaEFa));
@@ -33,7 +36,8 @@ contract SeedAgents is Script {
         // Fresh addr used just for a "pending" demo entry — user will approve it via Admin UI
         address certik   = vm.envOr("CERTIK_ADDRESS",   address(0x72a8E05D3955Bd59C03136e1eA12088b55B11307));
 
-        ArgusRegistry reg = ArgusRegistry(REGISTRY);
+        ArgusRegistry reg = ArgusRegistry(registryAddr);
+        console2.log("ArgusRegistry at", registryAddr);
 
         vm.startBroadcast(pk);
 

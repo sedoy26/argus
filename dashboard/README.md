@@ -40,6 +40,9 @@ Set **build-time** env (e.g. on Railway) so the SPA calls your APIs directly:
 
 - `VITE_SIGNAL_API` — origin only, e.g. `https://argus-signal-api-production.up.railway.app`
 - `VITE_GATEWAY_URL` — e.g. `https://argus-gateway-production.up.railway.app`
+- `VITE_ARGUS_REGISTRY_ADDRESS` — Sepolia **`ArgusRegistry`** `0x…` (defaults to the repo’s demo address if unset; **set this after you redeploy** a registry with e.g. `restoreAgents`)
+
+See `.env.example`. In the browser you can override the registry without rebuild: `localStorage.setItem('ARGUS_REGISTRY_ADDRESS_OVERRIDE','0x…'); location.reload()`.
 
 Then:
 
@@ -67,10 +70,11 @@ Yes, but the browser rule matters: the dashboard is **HTTPS** on Railway, so it 
 ```js
 localStorage.setItem('ARGUS_SIGNAL_API_OVERRIDE', 'https://your-api-tunnel.example');
 localStorage.setItem('ARGUS_GATEWAY_URL_OVERRIDE', 'https://your-gw-tunnel.example'); // optional
+localStorage.setItem('ARGUS_REGISTRY_ADDRESS_OVERRIDE', '0xYourRegistry…'); // optional
 location.reload();
 ```
 
-Clear overrides: `localStorage.removeItem('ARGUS_SIGNAL_API_OVERRIDE')` (and gateway key) → reload.
+Clear overrides: `localStorage.removeItem('ARGUS_SIGNAL_API_OVERRIDE')` (and gateway / registry keys) → reload.
 
 Your local **signal-api** and **gateway** already send permissive CORS headers so the Railway origin is allowed.
 

@@ -13,7 +13,7 @@ returns the TEE-attested consensus envelope.
 | GET | `/boot` | Applet boot commitment + code hash |
 | POST | `/signals` | Submit a verified signal |
 | GET | `/risk/:address` | Query consensus for a contract |
-| POST | `/demo/reset` | Hosted demo reset: clears events, score memory, social agents, enrollments; with `STANDALONE=1` also clears signals. **Auth:** JSON body `{ adminAddress, nonce, signature }` (admin wallet signs `buildAdminDemoResetMessage` in `enrollments.ts` — same text as dashboard) **or** header `x-argus-demo-reset` = `ARGUS_DEMO_RESET_SECRET` (optional env for curl/scripts). On-chain approvals: `scripts/reset-sepolia-approvals.sh`. |
+| POST | `/demo/reset` | Hosted demo reset: clears events, score memory, social agents, enrollments; with `STANDALONE=1` also clears signals. **Auth:** JSON body `{ adminAddress, nonce, signature }` (admin wallet signs `buildAdminDemoResetMessage` in `enrollments.ts` — same text as dashboard) **or** header `x-argus-demo-reset` = `ARGUS_DEMO_RESET_SECRET` (optional env for curl/scripts). **Registry:** Admin dashboard (owner wallet) sends `restoreAgents` after reset for revoked rows. Token approvals: `scripts/reset-sepolia-approvals.sh`. |
 
 ### POST `/demo/reset` (Railway / CI)
 

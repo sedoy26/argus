@@ -27,6 +27,10 @@ function trimSlash(s: string): string {
 
 const LS_SIGNAL = 'ARGUS_SIGNAL_API_OVERRIDE';
 const LS_GATEWAY = 'ARGUS_GATEWAY_URL_OVERRIDE';
+const LS_REGISTRY = 'ARGUS_REGISTRY_ADDRESS_OVERRIDE';
+
+/** Sepolia ArgusRegistry (checksum-agnostic). Override after redeploy. */
+const DEFAULT_ARGUS_REGISTRY = '0xc91Ed23CF4945b26a4ff510295A105677D66F1EB' as const;
 
 function readLocalOverride(key: string): string {
   if (typeof window === 'undefined') return '';
@@ -46,6 +50,19 @@ export function signalApiOrigin(): string {
 /** Effective ens-gateway origin. */
 export function gatewayOrigin(): string {
   return readLocalOverride(LS_GATEWAY) || trimSlash(import.meta.env.VITE_GATEWAY_URL ?? '');
+}
+
+/** ArgusRegistry on Sepolia — `localStorage` override wins, then `VITE_ARGUS_REGISTRY_ADDRESS` at build time. */
+export function argusRegistryAddress(): `0x${string}` {
+  const pick = (s: string) => {
+    const t = s.trim();
+    return /^0x[0-9a-fA-F]{40}$/.test(t) ? (t.toLowerCase() as `0x${string}`) : null;
+  };
+  return (
+    pick(readLocalOverride(LS_REGISTRY)) ??
+    pick(trimSlash(import.meta.env.VITE_ARGUS_REGISTRY_ADDRESS ?? '')) ??
+    (DEFAULT_ARGUS_REGISTRY.toLowerCase() as `0x${string}`)
+  );
 }
 
 /** Path on signal-api, e.g. `/health` or `/risk/0x…`. */

@@ -39,6 +39,18 @@ the consensus envelope. This is fine for hackathon / demo use; for
 production, wrap responses in an Ed25519 signature and verify it in
 `resolveCallback`.
 
+## ArgusRegistry
+
+On-chain allowlist for scouts / guardians / watchers (`src/ArgusRegistry.sol`).
+The admin dashboard can **revoke** agents and, after a hosted demo reset,
+batch-**restore** revoked rows via `restoreAgents(address[])` (owner-only,
+emits `AgentApproved` again).
+
+After deploying a new registry, set:
+
+- **Dashboard (Railway / Vite build):** `VITE_ARGUS_REGISTRY_ADDRESS=0x…` (or dev-only `localStorage` key `ARGUS_REGISTRY_ADDRESS_OVERRIDE`).
+- **Seeding:** `ARGUS_REGISTRY_ADDRESS=0x… forge script script/SeedAgents.s.sol:SeedAgents … --broadcast`
+
 ## Build & test
 
 ```bash
