@@ -30,7 +30,7 @@ const LS_GATEWAY = 'ARGUS_GATEWAY_URL_OVERRIDE';
 const LS_REGISTRY = 'ARGUS_REGISTRY_ADDRESS_OVERRIDE';
 
 /** Sepolia ArgusRegistry (checksum-agnostic). Override after redeploy. */
-const DEFAULT_ARGUS_REGISTRY = '0xc91Ed23CF4945b26a4ff510295A105677D66F1EB' as const;
+const DEFAULT_ARGUS_REGISTRY = '0x51bb425b9652B9d9fb979757A6ACF60DA7f6f7eA' as const;
 
 function readLocalOverride(key: string): string {
   if (typeof window === 'undefined') return '';

@@ -46,9 +46,19 @@ The admin dashboard can **revoke** agents and, after a hosted demo reset,
 batch-**restore** revoked rows via `restoreAgents(address[])` (owner-only,
 emits `AgentApproved` again).
 
-After deploying a new registry, set:
+Deploy **only** a fresh registry (leaves FakeSwapNet / tokens unchanged):
 
-- **Dashboard (Railway / Vite build):** `VITE_ARGUS_REGISTRY_ADDRESS=0x…` (or dev-only `localStorage` key `ARGUS_REGISTRY_ADDRESS_OVERRIDE`).
+```bash
+export PRIVATE_KEY=0x…
+export SEPOLIA_RPC_URL=https://…
+# optional: export ARGUS_OWNER=0x…   # defaults to deployer
+forge script script/DeployRegistry.s.sol:DeployRegistry \
+  --rpc-url $SEPOLIA_RPC_URL --broadcast -vvv
+```
+
+Then seed agents and wire the dashboard:
+
+- **Dashboard (Railway / Vite build):** `VITE_ARGUS_REGISTRY_ADDRESS=0x…` (or dev `localStorage` `ARGUS_REGISTRY_ADDRESS_OVERRIDE`).
 - **Seeding:** `ARGUS_REGISTRY_ADDRESS=0x… forge script script/SeedAgents.s.sol:SeedAgents … --broadcast`
 
 ## Build & test

@@ -20,7 +20,8 @@ import {ArgusRegistry} from "../src/ArgusRegistry.sol";
 ///   ARGUS_REGISTRY_ADDRESS — deployed ArgusRegistry (default: current Sepolia demo)
 ///   SCOUT_ADDRESS    — deployer's scout wallet (defaults to GUARDIAN_EXTRA_KEYS[0])
 ///   GUARDIAN_ADDRESS — guardian KMS wallet
-///   CERTIK_ADDRESS   — pending scout demo wallet
+///   CERTIK_ADDRESS   — CertiK demo scout wallet
+///   WATCHER_ADDRESS  — Sourcify watcher (defaults to team Sepolia demo wallet)
 
 contract SeedAgents is Script {
     function run() external {
@@ -28,13 +29,13 @@ contract SeedAgents is Script {
 
         address registryAddr = vm.envExists("ARGUS_REGISTRY_ADDRESS")
             ? vm.parseAddress(vm.envString("ARGUS_REGISTRY_ADDRESS"))
-            : address(0xc91Ed23CF4945b26a4ff510295A105677D66F1EB);
+            : address(0x51bb425b9652B9d9fb979757A6ACF60DA7f6f7eA);
 
         // Defaults to the first guardian extra wallet as scout demo address
         address scout    = vm.envOr("SCOUT_ADDRESS",    address(0xD4aC45F3a92DABF81bCB3BF2ce08bf7383fdaEFa));
         address guardian = vm.envOr("GUARDIAN_ADDRESS", address(0x334219D81d4E4712383dDd2D66bC0B9a48645EBe));
-        // Fresh addr used just for a "pending" demo entry — user will approve it via Admin UI
         address certik   = vm.envOr("CERTIK_ADDRESS",   address(0x72a8E05D3955Bd59C03136e1eA12088b55B11307));
+        address watcher  = vm.envOr("WATCHER_ADDRESS",  address(0x64DD18a9Abe7d6eee4ED5CD692f694c1Fd7F57BC));
 
         ArgusRegistry reg = ArgusRegistry(registryAddr);
         console2.log("ArgusRegistry at", registryAddr);
@@ -86,6 +87,20 @@ contract SeedAgents is Script {
             console2.log("Registered CERTIK scout:", certik);
         } else {
             console2.log("CERTIK already registered:", certik);
+        }
+
+        // Watcher — Sourcify / on-chain demo identity
+        if (!_isRegistered(reg, watcher)) {
+            reg.registerAndApprove(
+                watcher,
+                ArgusRegistry.Role.WATCHER,
+                "watcher-sourcify.agents.argus-security.eth",
+                "sourcify,onchain-events",
+                85
+            );
+            console2.log("Registered WATCHER:", watcher);
+        } else {
+            console2.log("WATCHER already registered:", watcher);
         }
 
         vm.stopBroadcast();
