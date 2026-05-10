@@ -45,6 +45,7 @@ import {
   type SignalSubmission,
 } from './signals.ts';
 import {
+  fetchRedditUrl,
   listSocialAgents,
   registerSocialIntelRunner,
   startSocialAgent,
@@ -313,7 +314,7 @@ async function handleIntel(req: Request): Promise<Response> {
       emit('info', `Scout fetching Reddit post…`, { url: sourceUrl });
       try {
         const jsonUrl = sourceUrl.replace(/\?.*$/, '').replace(/\/$/, '') + '.json';
-        const r = await fetch(jsonUrl, { headers: { 'user-agent': 'ArgusBot/1.0' } });
+        const r = await fetchRedditUrl(jsonUrl, sourceUrl);
         if (r.ok) {
           const data = (await r.json()) as Array<{ data: { children: Array<{ data: Record<string, unknown> }> } }>;
           const post = data[0]?.data?.children?.[0]?.data ?? {};

@@ -70,6 +70,13 @@ bun run smoke
 Defaults are 127.0.0.1:8787 (HTTP) and 127.0.0.1:4000 (bridge). Override
 with `PORT`, `DEVICE_HOST`, `DEVICE_PORT`.
 
+## Reddit (social scout / intel)
+
+Anonymous Reddit `.json` requests sometimes return **403** from datacenter IPs
+or when the `User-Agent` looks like a bot. Signal-api sends browser-like headers
+and retries `www` → `old` → `new` hosts. Set **`REDDIT_USER_AGENT`** to a full
+Chrome-style string if you still see blocks in production (e.g. Railway).
+
 ## Why `nc` instead of native sockets
 
 The signal API shells out to `nc` per bridge call rather than using

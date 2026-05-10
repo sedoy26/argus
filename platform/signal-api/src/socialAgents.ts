@@ -162,6 +162,56 @@ function stopAgentsForProfileKey(key: string): void {
   }
 }
 
+/**
+ * Reddit often returns 403 for bare server user-agents or some datacenter IPs.
+ * Use browser-like headers; optional `REDDIT_USER_AGENT` on signal-api for operators.
+ * Tries www → old → new host (anonymous `.json` endpoints).
+ */
+export function redditJsonFetchInit(referer: string): RequestInit {
+  const ua =
+    Bun.env.REDDIT_USER_AGENT?.trim() ||
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+  return {
+    headers: {
+      'user-agent': ua,
+      accept: 'application/json, text/javascript, */*; q=0.01',
+      'accept-language': 'en-US,en;q=0.9',
+      referer: referer.startsWith('http') ? referer : `https://www.reddit.com${referer.startsWith('/') ? '' : '/'}${referer}`,
+    },
+  };
+}
+
+export async function fetchRedditUrl(fullUrl: string, referer: string): Promise<Response> {
+  const init = redditJsonFetchInit(referer);
+  let u: URL;
+  try {
+    u = new URL(fullUrl);
+  } catch {
+    return fetch(fullUrl, init);
+  }
+  if (!/(^|\.)reddit\.com$/i.test(u.hostname)) {
+    return fetch(fullUrl, init);
+  }
+
+  const pathAndQuery = `${u.pathname}${u.search}`;
+  const hosts = ['www.reddit.com', 'old.reddit.com', 'new.reddit.com'] as const;
+  let last: Response | null = null;
+  for (const host of hosts) {
+    const tryUrl = `https://${host}${pathAndQuery}`;
+    const r = await fetch(tryUrl, init);
+    last = r;
+    if (r.ok) return r;
+    if (r.status !== 403 && r.status !== 429 && r.status !== 503) return r;
+  }
+  return last!;
+}
+
+async function fetchRedditUserSubmitted(redditUser: string): Promise<Response> {
+  const path = `/user/${encodeURIComponent(redditUser)}/submitted.json?limit=25&raw_json=1`;
+  const referer = `https://www.reddit.com/user/${encodeURIComponent(redditUser)}/`;
+  return fetchRedditUrl(`https://www.reddit.com${path}`, referer);
+}
+
 async function apifyUserTweets(handle: string): Promise<Array<Record<string, unknown>>> {
   if (!Bun.env.APIFY_X402_PRIVATE_KEY && !Bun.env.APIFY_TOKEN) {
     throw new Error('Twitter/X watch requires APIFY_X402_PRIVATE_KEY (X402) or APIFY_TOKEN on signal-api');
@@ -224,10 +274,7 @@ export function startSocialAgent(
   };
 
   const tickReddit = async (live: AgentEntry, redditUser: string) => {
-    const url = `https://www.reddit.com/user/${encodeURIComponent(redditUser)}/submitted.json?limit=25&raw_json=1`;
-    const r = await fetch(url, {
-      headers: { 'user-agent': 'ArgusSocialAgent/1.0 (local demo; security research)' },
-    });
+    const r = await fetchRedditUserSubmitted(redditUser);
     if (!r.ok) throw new Error(`Reddit HTTP ${r.status}`);
     const j = (await r.json()) as { data?: { children?: Array<{ data: Record<string, unknown> }> } };
     const children = j.data?.children ?? [];
