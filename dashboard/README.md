@@ -51,6 +51,29 @@ bun run start   # serves ./dist on $PORT (Railway)
 
 Omit both variables in dev to keep using the Vite `/api` and `/gw` proxies.
 
+## Railway dashboard + local QEMU / signal-api
+
+Yes, but the browser rule matters: the dashboard is **HTTPS** on Railway, so it **cannot** call **`http://127.0.0.1:8787`** (mixed active content — the request is blocked).
+
+**Practical setup**
+
+1. Run **QEMU** and **signal-api** locally with **`STANDALONE` unset** (bridge mode) so the TEE is used.
+2. (Optional) Run **ens-resolver** locally if you use **gateway preview**; point it at local signal-api (`ARGUS_API`).
+3. Expose local HTTP with an **HTTPS tunnel** (e.g. `cloudflared tunnel --url http://127.0.0.1:8787` for API and another for gateway if needed). You need **`https://…`** URLs.
+4. Point the hosted UI at those URLs, either:
+   - **Rebuild** the dashboard with `VITE_SIGNAL_API` / `VITE_GATEWAY_URL` set to the tunnel origins, **or**
+   - On the live Railway site, open DevTools → Console and run once, then reload:
+
+```js
+localStorage.setItem('ARGUS_SIGNAL_API_OVERRIDE', 'https://your-api-tunnel.example');
+localStorage.setItem('ARGUS_GATEWAY_URL_OVERRIDE', 'https://your-gw-tunnel.example'); // optional
+location.reload();
+```
+
+Clear overrides: `localStorage.removeItem('ARGUS_SIGNAL_API_OVERRIDE')` (and gateway key) → reload.
+
+Your local **signal-api** and **gateway** already send permissive CORS headers so the Railway origin is allowed.
+
 ## Demo flow
 
 1. Open the dashboard.

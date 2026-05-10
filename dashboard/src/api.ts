@@ -1,6 +1,10 @@
 // Dev: Vite proxies `/api` → signal-api and `/gw` → ens-resolver.
 // Production: set `VITE_SIGNAL_API` and `VITE_GATEWAY_URL` (build-time) so
 // the browser calls your hosted services directly (CORS must allow the UI origin).
+//
+// Hybrid (Railway UI + local QEMU): an https:// dashboard cannot call http://localhost
+// (mixed content). Use an HTTPS tunnel to your machine, then either set build-time VITE_*
+// to the tunnel URLs or set localStorage overrides (see README).
 
 import type {
   ArgusEvent,
@@ -14,20 +18,42 @@ function trimSlash(s: string): string {
   return s.replace(/\/+$/, '');
 }
 
-const SIGNAL_API_BASE = trimSlash(import.meta.env.VITE_SIGNAL_API ?? '');
-const GATEWAY_BASE = trimSlash(import.meta.env.VITE_GATEWAY_URL ?? '');
+const LS_SIGNAL = 'ARGUS_SIGNAL_API_OVERRIDE';
+const LS_GATEWAY = 'ARGUS_GATEWAY_URL_OVERRIDE';
+
+function readLocalOverride(key: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const v = window.localStorage.getItem(key)?.trim();
+    return v ? trimSlash(v) : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Effective signal-api origin (no trailing slash). Override wins for hybrid / tunnel. */
+export function signalApiOrigin(): string {
+  return readLocalOverride(LS_SIGNAL) || trimSlash(import.meta.env.VITE_SIGNAL_API ?? '');
+}
+
+/** Effective ens-gateway origin. */
+export function gatewayOrigin(): string {
+  return readLocalOverride(LS_GATEWAY) || trimSlash(import.meta.env.VITE_GATEWAY_URL ?? '');
+}
 
 /** Path on signal-api, e.g. `/health` or `/risk/0x…`. */
 export function signalUrl(path: string): string {
   const p = path.startsWith('/') ? path : `/${path}`;
-  if (SIGNAL_API_BASE) return `${SIGNAL_API_BASE}${p}`;
+  const base = signalApiOrigin();
+  if (base) return `${base}${p}`;
   return `/api${p}`;
 }
 
 /** Path on ens gateway, e.g. `/preview/0x…`. */
 export function gatewayUrl(path: string): string {
   const p = path.startsWith('/') ? path : `/${path}`;
-  if (GATEWAY_BASE) return `${GATEWAY_BASE}${p}`;
+  const base = gatewayOrigin();
+  if (base) return `${base}${p}`;
   return `/gw${p}`;
 }
 
@@ -37,14 +63,14 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
     const empty = !text.trim();
     const hint500 =
       res.status >= 500 && empty
-        ? SIGNAL_API_BASE
+        ? signalApiOrigin()
           ? ' Empty response from signal-api — check deployment / ARGUS logs.'
           : ' Empty response usually means the Vite proxy could not reach signal-api (wrong port). Default proxy is :8787; ./reset.sh runs signal-api on :8788 — then use VITE_API_TARGET=http://127.0.0.1:8788 (and VITE_GW_TARGET=http://127.0.0.1:8789).'
         : '';
     const hint404 =
       res.status === 404 && /not found/i.test(text)
-        ? SIGNAL_API_BASE
-          ? ' Path missing on signal-api — redeploy API or check VITE_SIGNAL_API matches the running service.'
+        ? signalApiOrigin()
+          ? ' Path missing on signal-api — redeploy API or check VITE_SIGNAL_API / localStorage ARGUS_SIGNAL_API_OVERRIDE matches the running service.'
           : ' If /api/health works in the browser but this path 404s, restart signal-api after git pull. If nothing listens on the Vite proxy port, use `cd dashboard && bun run dev:reset` when ./reset.sh is running.'
         : '';
     throw new Error(`${res.status}: ${empty ? '(empty)' : text}${hint500}${hint404}`);
