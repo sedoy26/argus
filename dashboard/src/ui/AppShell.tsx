@@ -58,6 +58,7 @@ export function ParallaxLogo({
 
   const onMove = useCallback(
     (e: React.MouseEvent) => {
+      if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       const el = wrap.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
