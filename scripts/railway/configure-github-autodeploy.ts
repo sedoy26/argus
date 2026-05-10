@@ -4,13 +4,15 @@
  * config-as-code paths, and GitHub autodeploy — via Railway public GraphQL API.
  *
  * Prereqs:
- *   - Account or workspace API token: https://railway.com/account/tokens
+ *   - API token in the environment only (never in railway.deploy.config.json):
+ *       - Account/workspace: https://railway.com/account/tokens → `RAILWAY_API_TOKEN` (Bearer), or
+ *       - Project token: project settings → `RAILWAY_PROJECT_ACCESS_TOKEN` (Project-Access-Token header).
  *   - Railway GitHub App installed with access to `githubRepo` (browser flow; cannot be done via this API).
  *
  * Usage:
- *   export RAILWAY_API_TOKEN="…"
+ *   export RAILWAY_API_TOKEN="…"   # or RAILWAY_PROJECT_ACCESS_TOKEN for a project token
  *   export RAILWAY_PROJECT_ID="…"   # optional if set in railway.deploy.config.json as projectId
- *   export RAILWAY_ENVIRONMENT_ID="…" # optional; overrides environmentName when set
+ *   export RAILWAY_ENVIRONMENT_ID="…" # optional Railway *environment* UUID (not your API key)
  *   cp scripts/railway/railway.deploy.config.example.json scripts/railway/railway.deploy.config.json
  *   # edit githubRepo + matchName strings to match your Railway service names
  *   bun run scripts/railway/configure-github-autodeploy.ts
@@ -67,13 +69,26 @@ function loadConfig(): DeployConfig {
   return raw as unknown as DeployConfig;
 }
 
-async function gql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
+function railwayAuthHeaders(): Record<string, string> {
+  const projectAccess = process.env.RAILWAY_PROJECT_ACCESS_TOKEN?.trim();
+  if (projectAccess) {
+    return { 'content-type': 'application/json', 'Project-Access-Token': projectAccess };
+  }
+  const bearer = process.env.RAILWAY_API_TOKEN?.trim();
+  if (bearer) {
+    return { 'content-type': 'application/json', authorization: `Bearer ${bearer}` };
+  }
+  return { 'content-type': 'application/json' };
+}
+
+async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  const headers = railwayAuthHeaders();
+  if (!headers.authorization && !headers['Project-Access-Token']) {
+    throw new Error('Missing RAILWAY_API_TOKEN or RAILWAY_PROJECT_ACCESS_TOKEN');
+  }
   const res = await fetch(GQL, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify({ query, variables }),
   });
   const body = (await res.json()) as GqlResp<T>;
@@ -155,9 +170,11 @@ mutation Deploy($serviceId: String!, $environmentId: String!) {
 }`;
 
 async function main() {
-  const token = process.env.RAILWAY_API_TOKEN?.trim();
-  if (!token) {
-    console.error('Set RAILWAY_API_TOKEN (account or workspace token from railway.com/account/tokens).');
+  const auth = railwayAuthHeaders();
+  if (!auth.authorization && !auth['Project-Access-Token']) {
+    console.error(
+      'Set RAILWAY_API_TOKEN (Bearer, from railway.com/account/tokens) or RAILWAY_PROJECT_ACCESS_TOKEN (project token). Do not put API keys in railway.deploy.config.json.',
+    );
     process.exit(1);
   }
 
@@ -177,7 +194,7 @@ async function main() {
       environments: { edges: EnvEdge[] };
       services: { edges: ServiceEdge[] };
     };
-  }>(token, Q_PROJECT, { id: projectId });
+  }>(Q_PROJECT, { id: projectId });
 
   const proj = data.project;
   const services = proj.services.edges;
@@ -217,7 +234,7 @@ async function main() {
 
     if (!dry) {
       try {
-        await gql(token, M_CONNECT, {
+        await gql(M_CONNECT, {
           id: sid,
           input: { repo: cfg.githubRepo, branch: cfg.branch },
         });
@@ -231,7 +248,7 @@ async function main() {
         }
       }
 
-      await gql(token, M_INSTANCE, {
+      await gql(M_INSTANCE, {
         environmentId: activeEnv.id,
         serviceId: sid,
         input: {
@@ -241,7 +258,7 @@ async function main() {
       });
       console.log('  serviceInstanceUpdate (rootDirectory + railwayConfigFile): ok');
 
-      await gql(token, M_AUTODEPLOY, {
+      await gql(M_AUTODEPLOY, {
         input: {
           enabled: true,
           projectId: proj.id,
@@ -252,7 +269,7 @@ async function main() {
       console.log('  serviceInstanceAutoDeployUpdate: ok');
 
       if (doDeploy) {
-        await gql(token, M_DEPLOY, { serviceId: sid, environmentId: activeEnv.id });
+        await gql(M_DEPLOY, { serviceId: sid, environmentId: activeEnv.id });
         console.log('  serviceInstanceDeploy(latestCommit): ok');
       }
     } else {

@@ -1,7 +1,6 @@
 {
-  "_readme": "Copy to railway.deploy.config.json. Optional: projectId / environmentId here so you do not need RAILWAY_PROJECT_ID / RAILWAY_ENVIRONMENT_ID env vars.",
+  "_readme": "Copy to railway.deploy.config.json. Optional projectId. Never put API tokens here — use RAILWAY_API_TOKEN or RAILWAY_PROJECT_ACCESS_TOKEN in the shell only.",
   "projectId": "",
-  "environmentId": "",
   "githubRepo": "YOUR_ORG/heg",
   "branch": "main",
   "environmentName": "production",
