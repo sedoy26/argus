@@ -2335,29 +2335,38 @@ export function App() {
   const [eventsTick, setEventsTick] = useState(0);
   const events = useEvents(eventsTick);
 
+  /** Latest connected wallet — avoids applying /access after a slower response when the user switched accounts. */
+  const walletRef = useRef<string | null>(wallet);
+  walletRef.current = wallet;
+  const accessFetchGen = useRef(0);
+
   const bumpAfterDemoReset = useCallback(() => {
     setEventsTick((t) => t + 1);
     void refetchAll();
   }, [refetchAll]);
 
   const refreshAccess = useCallback(async (addr?: string | null) => {
-    const a = (addr ?? wallet)?.toLowerCase();
+    const a = (addr ?? walletRef.current)?.toLowerCase();
     if (!a) {
       setAccess(null);
       return;
     }
+    const gen = ++accessFetchGen.current;
     try {
       setAccessErr('');
       const ac = await getAccess(a);
+      if (gen !== accessFetchGen.current) return;
       setAccess(ac);
     } catch (e) {
+      if (gen !== accessFetchGen.current) return;
       setAccessErr((e as Error).message ?? 'access failed');
       setAccess(null);
     }
-  }, [wallet]);
+  }, []);
 
   useEffect(() => {
     if (!wallet) {
+      accessFetchGen.current++;
       setAccess(null);
       return;
     }
@@ -2426,13 +2435,12 @@ export function App() {
       } catch { /* ignore */ }
       roleInitForWallet.current = null;
       setWallet(addr);
-      await refreshAccess(addr);
       return;
     }
     setWalletPickerErr('');
     setWalletPickerChoices(opts);
     setWalletPickerOpen(true);
-  }, [refreshAccess]);
+  }, []);
 
   const completeWalletPick = useCallback(async (opt: WalletOption) => {
     setWalletPickerErr('');
@@ -2445,13 +2453,13 @@ export function App() {
       roleInitForWallet.current = null;
       setWalletPickerOpen(false);
       setWallet(addr);
-      await refreshAccess(addr);
     } catch (e) {
       setWalletPickerErr((e as Error).message ?? 'connect failed');
     }
-  }, [refreshAccess]);
+  }, []);
 
   const clearWalletSession = useCallback(() => {
+    accessFetchGen.current++;
     try {
       sessionStorage.removeItem(WALLET_SESSION);
       sessionStorage.removeItem(WALLET_PROVIDER_ID);
@@ -2498,7 +2506,6 @@ export function App() {
         } catch { /* ignore */ }
         roleInitForWallet.current = null;
         setWallet(next);
-        void refreshAccess(next);
       }
     };
 
@@ -2515,7 +2522,7 @@ export function App() {
         subOff('accountsChanged', onAccountsChanged);
       } catch { /* ignore */ }
     };
-  }, [wallet, walletTransportReady, clearWalletSession, refreshAccess]);
+  }, [wallet, walletTransportReady, clearWalletSession]);
 
   useEffect(() => saveWatched(watched), [watched]);
 

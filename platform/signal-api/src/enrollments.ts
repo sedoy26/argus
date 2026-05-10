@@ -1,6 +1,6 @@
 // Contributor enrollment + access flags (in-memory; reset on process restart).
 //
-// Privileged / admin wallets come from ARGUS_PRIVILEGED_ADDRESSES / ARGUS_ADMIN_ADDRESSES only.
+// Scout bypass: ARGUS_PRIVILEGED_ADDRESSES. Admin UI / demo reset: ARGUS_ADMIN_ADDRESSES only (no overlap fallback).
 // Everyone else defaults to "user" until an admin approves a role request.
 // Admin actions require EIP-191 personal_sign over a nonce-bound message.
 // ARGUS_AUTH_STRICT is surfaced to the UI only (stricter messaging); it does not grant roles.
@@ -45,10 +45,9 @@ export function privilegedAddresses(): Set<string> {
   return parseAddrList(Bun.env.ARGUS_PRIVILEGED_ADDRESSES);
 }
 
+/** Admin-only allowlist. Never falls back to privileged scouts — that accidentally granted Admin UI to every scout wallet when `ARGUS_ADMIN_ADDRESSES` was unset. */
 export function adminAddresses(): Set<string> {
-  const a = parseAddrList(Bun.env.ARGUS_ADMIN_ADDRESSES);
-  if (a.size > 0) return a;
-  return privilegedAddresses();
+  return parseAddrList(Bun.env.ARGUS_ADMIN_ADDRESSES);
 }
 
 /** Deploy-team allowlist (Scout UI + skip enrollment). Not tied to `ARGUS_AUTH_STRICT`. */
@@ -57,7 +56,7 @@ export function isPrivileged(addr: string): boolean {
 }
 
 /**
- * Admin moderation + demo reset. Uses `ARGUS_ADMIN_ADDRESSES`, or the privileged set if unset.
+ * Admin moderation + demo reset. Only `ARGUS_ADMIN_ADDRESSES` (comma-separated 0x…40).
  * `ARGUS_AUTH_STRICT` only affects what the UI shows about signature policy — never elevates random wallets.
  */
 export function isAdmin(addr: string): boolean {

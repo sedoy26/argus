@@ -535,10 +535,11 @@ function handleAuthNonce(url: URL): Response {
 }
 
 function handleAccess(url: URL): Response {
-  const address = url.searchParams.get('address');
-  const acc = accessForAddress(address);
+  const raw = (url.searchParams.get('address') ?? '').trim();
+  const queriedAddress = /^0x[0-9a-fA-F]{40}$/.test(raw) ? raw.toLowerCase() : null;
+  const acc = accessForAddress(queriedAddress);
   return json(
-    { ...acc, authStrict: authStrict() },
+    { ...acc, authStrict: authStrict(), queriedAddress },
     {
       headers: {
         'cache-control': 'no-store, private, max-age=0',
@@ -788,5 +789,5 @@ emit('boot', `Argus signal-api started (${STANDALONE ? 'standalone' : 'TEE bridg
 console.log(`[signal-api] listening on http://localhost:${server.port}`);
 console.log(`[signal-api] mode          ${STANDALONE ? 'standalone (no TEE)' : 'bridge → ' + bridgeAddress}`);
 console.log(
-  `[signal-api] access allowlists  privileged=${privilegedAddresses().size} admin=${adminAddresses().size} (set ARGUS_PRIVILEGED_ADDRESSES / ARGUS_ADMIN_ADDRESSES only for real deploy wallets)`,
+  `[signal-api] access allowlists  privileged=${privilegedAddresses().size} admin=${adminAddresses().size} (ARGUS_ADMIN_ADDRESSES required for admin UI; ARGUS_PRIVILEGED_ADDRESSES for scout bypass only)`,
 );

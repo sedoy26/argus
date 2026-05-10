@@ -226,6 +226,8 @@ export interface AccessInfo {
     createdAt: number;
   } | null;
   authStrict: boolean;
+  /** Echo of normalized `?address=` from signal-api; absent on older servers. */
+  queriedAddress?: string | null;
 }
 
 function normalizeAccessPayload(raw: unknown): AccessInfo {
@@ -249,22 +251,46 @@ function normalizeAccessPayload(raw: unknown): AccessInfo {
     };
   }
 
+  let queriedAddress: string | null | undefined;
+  if ('queriedAddress' in o) {
+    const q = o.queriedAddress;
+    if (q === null) queriedAddress = null;
+    else if (typeof q === 'string' && /^0x[0-9a-fA-F]{40}$/i.test(q)) queriedAddress = q.toLowerCase();
+    else queriedAddress = null;
+  }
+
   return {
     privileged: parseAccessBool(o.privileged),
     isAdmin: parseAccessBool(o.isAdmin),
     approvedRoles,
     pending,
     authStrict: parseAccessBool(o.authStrict),
+    queriedAddress,
   };
 }
 
 export async function getAccess(address: string): Promise<AccessInfo> {
+  const target = address.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(target)) {
+    throw new Error('getAccess: invalid wallet address');
+  }
   const raw = await jsonOrThrow<unknown>(
-    await fetch(signalUrl(`/access?address=${encodeURIComponent(address)}`), {
+    await fetch(signalUrl(`/access?address=${encodeURIComponent(target)}`), {
       cache: 'no-store',
     }),
   );
-  return normalizeAccessPayload(raw);
+  const ac = normalizeAccessPayload(raw);
+  if (ac.queriedAddress !== undefined) {
+    if (ac.queriedAddress === null) {
+      throw new Error(
+        'signal-api /access did not accept the wallet query (?address= stripped or API too old). Redeploy signal-api.',
+      );
+    }
+    if (ac.queriedAddress !== target) {
+      throw new Error('access response does not match the requested wallet — ignoring stale or tampered payload');
+    }
+  }
+  return ac;
 }
 
 export async function getAuthNonce(
