@@ -8,17 +8,20 @@
     {
       "matchName": "dashboard",
       "rootDirectory": "dashboard",
-      "railwayConfigFile": "/dashboard/railway.toml"
+      "railwayConfigFile": "/dashboard/railway.toml",
+      "watchPatterns": ["/dashboard/**"]
     },
     {
       "matchName": "signal",
       "rootDirectory": "platform/signal-api",
-      "railwayConfigFile": "/platform/signal-api/railway.toml"
+      "railwayConfigFile": "/platform/signal-api/railway.toml",
+      "watchPatterns": ["/platform/signal-api/**"]
     },
     {
       "matchName": "gateway",
       "rootDirectory": "platform/ens-resolver",
-      "railwayConfigFile": "/platform/ens-resolver/railway.toml"
+      "railwayConfigFile": "/platform/ens-resolver/railway.toml",
+      "watchPatterns": ["**"]
     }
   ]
 }

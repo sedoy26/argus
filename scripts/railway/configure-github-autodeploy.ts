@@ -47,6 +47,12 @@ type DeployConfig = {
     rootDirectory: string;
     railwayConfigFile: string;
     serviceId?: string;
+    /**
+     * GitHub “skip: no watched files” uses **service-instance** watch patterns
+     * (often seeded from the UI), not only `railway.toml`. When set here, we
+     * send them via `serviceInstanceUpdate` so they match what you expect.
+     */
+    watchPatterns?: string[];
   }>;
 };
 
@@ -287,15 +293,20 @@ async function main() {
         }
       }
 
+      const instanceInput: Record<string, unknown> = {
+        rootDirectory: row.rootDirectory,
+        railwayConfigFile: row.railwayConfigFile,
+      };
+      if (Array.isArray(row.watchPatterns) && row.watchPatterns.length > 0) {
+        instanceInput.watchPatterns = row.watchPatterns;
+      }
       await gql(M_INSTANCE, {
         environmentId: activeEnv.id,
         serviceId: sid,
-        input: {
-          rootDirectory: row.rootDirectory,
-          railwayConfigFile: row.railwayConfigFile,
-        },
+        input: instanceInput,
       });
-      console.log('  serviceInstanceUpdate (rootDirectory + railwayConfigFile): ok');
+      const wp = Array.isArray(row.watchPatterns) && row.watchPatterns.length > 0 ? ` + watchPatterns(${row.watchPatterns.length})` : '';
+      console.log(`  serviceInstanceUpdate (rootDirectory + railwayConfigFile${wp}): ok`);
 
       await gql(M_AUTODEPLOY, {
         input: {

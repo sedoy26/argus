@@ -55,6 +55,7 @@ In the gateway service settings:
 3. **Health check path:** should be **`/`** (or **`/healthz`**) for a dependency-free probe. If the dashboard override still says `/health`, either switch it to **`/`** or ensure **`ARGUS_API`** is correct so `GET /health` finishes within the timeout.
 4. Do **not** set **`HOST=127.0.0.1`** on the service; the server always binds **`0.0.0.0`**.
 5. Railway probes with host **`healthcheck.railway.app`**; this app does not enforce host allowlists.
+6. If GitHub deploys show **“No changes to watched files”** while you did change this package, the **service-instance `watchPatterns`** in Railway (not only `railway.toml`) are wrong. Run **`bun run scripts/railway/configure-github-autodeploy.ts --skip-connect`** from the repo root (with `RAILWAY_API_TOKEN` set) so the script pushes **`watchPatterns: ["**"]`** for this service via the public API, or set **Watch paths** in the UI to `**`.
 
 ## Wildcard scheme
 
