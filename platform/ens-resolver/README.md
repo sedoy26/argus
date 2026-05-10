@@ -32,6 +32,7 @@ client                          on-chain                          gateway
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/` | liveness (no upstream); used for Railway healthchecks |
 | GET | `/health` | gateway + signal-api status |
 | GET | `/lookup/:sender/:data.json` | EIP-3668 GET form |
 | POST | `/lookup` | EIP-3668 POST form, body `{sender, data}` |

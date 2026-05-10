@@ -15,7 +15,8 @@
 // addr()).
 //
 // Plus, for humans:
-//   GET  /health         — bridge + signal-api status
+//   GET  /              — instant liveness (no signal-api)
+//   GET  /health         — signal-api reachability + status
 //   GET  /preview/:addr  — JSON view of every text record for an addr
 
 import {
@@ -43,6 +44,8 @@ import {
 } from './consensus.ts';
 
 const PORT = Number(Bun.env.PORT ?? 8788);
+/** On Railway the edge must reach the process; never bind loopback-only there. */
+const ON_RAILWAY = Boolean(Bun.env.RAILWAY_ENVIRONMENT_NAME || Bun.env.RAILWAY_PROJECT_ID);
 const FRONTEND_URL_TEMPLATE =
   Bun.env.ARGUS_FRONTEND_URL_TEMPLATE ?? 'https://argus.eth.limo/risk/{addr}';
 
@@ -282,18 +285,23 @@ async function handlePreview(addr: string): Promise<Response> {
 // Server
 // ---------------------------------------------------------------------------
 
-const HOST = Bun.env.HOST ?? '0.0.0.0';
+const HOST = ON_RAILWAY ? '0.0.0.0' : (Bun.env.HOST ?? '0.0.0.0');
 
 const server = Bun.serve({
   hostname: HOST,
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
-    const path = url.pathname;
+    let path = url.pathname;
+    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
     if (req.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: { ...CORS_HEADERS } });
     }
     try {
+      // Instant liveness for load balancers / Railway (no upstream calls).
+      if (req.method === 'GET' && path === '/') {
+        return json({ status: 'ok', service: 'argus-gateway' });
+      }
       if (req.method === 'GET' && path === '/health') return handleHealth();
 
       const preview = path.match(/^\/preview\/(0x[0-9a-fA-F]{40})$/);
