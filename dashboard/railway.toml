@@ -1,5 +1,7 @@
 [build]
 builder = "nixpacks"
+# From repo root: only redeploy this service when its package changes (GitHub push autodeploy).
+watchPatterns = ["/dashboard/**"]
 
 [deploy]
 startCommand = "bun run start"

@@ -42,3 +42,15 @@ presentation/     Slides + backup demo video
 Components are independent — each subdirectory has its own setup. See per-component READMEs once added.
 
 For pre-hackathon prep checklist, see Section 8 of `architecture-vision.md`.
+
+## Railway: deploy from GitHub (no manual deploys)
+
+Railway does **not** read GitHub settings from `railway.toml`; each service must be **connected to the repo** with **automatic deployments** turned on.
+
+1. **GitHub App access** — In GitHub: [Settings → Applications → Railway](https://github.com/settings/installations) → Configure → ensure this repository is allowed (and accept any pending permission updates).
+2. **Link the repo per service** — In Railway: open the **dashboard** and **signal-api** services (and any others) → **Settings** → **Source** → connect the same GitHub repository and set the deploy branch (e.g. `main`).
+3. **Enable autodeploy** — On that Source screen, ensure **automatic deployments** are **Enabled** (if they were disabled after a permissions glitch, re-enable after fixing GitHub access). See [Controlling GitHub autodeploys](https://docs.railway.com/guides/github-autodeploys).
+4. **Monorepo root directory + config file** — For each service, set **Root directory** (e.g. `dashboard/`, `platform/signal-api/`, `platform/ens-resolver/`). Railway does **not** resolve `railway.toml` relative to that root: in **Settings → Build → Config file path**, set the path from the repo root, e.g. `/dashboard/railway.toml`, `/platform/signal-api/railway.toml`, `/platform/ens-resolver/railway.toml`.
+5. **Watch paths** — Each service’s `railway.toml` in this repo sets **`watchPatterns`** so a push only rebuilds services whose tree changed (e.g. `dashboard/**`, `platform/signal-api/**`). That keeps GitHub autodeploy fast and reliable. If you change only files outside those trees (e.g. top-level `README.md`), Railway may **skip** builds; use **Deploy Latest Commit** for a one-off, or temporarily widen/remove `watchPatterns` in the service you want to rebuild.
+
+After this, **`git push` to the connected branch** is enough; use **Deploy Latest Commit** in the command palette only when recovering from a skipped build or a doc-only change.
