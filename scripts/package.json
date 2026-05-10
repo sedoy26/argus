@@ -7,7 +7,9 @@
     "demo-sepolia": "bun run demo-sepolia.ts",
     "set-resolver": "bun run sepolia-set-resolver.ts",
     "verify": "bun run sepolia-verify.ts",
-    "kms-create-key": "bun run kms-create-key.ts"
+    "kms-create-key": "bun run kms-create-key.ts",
+    "railway:configure-autodeploy": "bun run railway/configure-github-autodeploy.ts",
+    "railway:list": "bun run railway/configure-github-autodeploy.ts --list"
   },
   "dependencies": {
     "viem": "^2.21.0",

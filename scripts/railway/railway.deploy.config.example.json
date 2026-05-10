@@ -1,0 +1,23 @@
+{
+  "_readme": "Copy to railway.deploy.config.json. Set RAILWAY_PROJECT_ID via Railway (Cmd/Ctrl+K → Copy project ID).",
+  "githubRepo": "YOUR_ORG/heg",
+  "branch": "main",
+  "environmentName": "production",
+  "services": [
+    {
+      "matchName": "dashboard",
+      "rootDirectory": "dashboard",
+      "railwayConfigFile": "/dashboard/railway.toml"
+    },
+    {
+      "matchName": "signal",
+      "rootDirectory": "platform/signal-api",
+      "railwayConfigFile": "/platform/signal-api/railway.toml"
+    },
+    {
+      "matchName": "gateway",
+      "rootDirectory": "platform/ens-resolver",
+      "railwayConfigFile": "/platform/ens-resolver/railway.toml"
+    }
+  ]
+}

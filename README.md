@@ -54,3 +54,26 @@ Railway does **not** read GitHub settings from `railway.toml`; each service must
 5. **Watch paths** — Each service’s `railway.toml` in this repo sets **`watchPatterns`** so a push only rebuilds services whose tree changed (e.g. `dashboard/**`, `platform/signal-api/**`). That keeps GitHub autodeploy fast and reliable. If you change only files outside those trees (e.g. top-level `README.md`), Railway may **skip** builds; use **Deploy Latest Commit** for a one-off, or temporarily widen/remove `watchPatterns` in the service you want to rebuild.
 
 After this, **`git push` to the connected branch** is enough; use **Deploy Latest Commit** in the command palette only when recovering from a skipped build or a doc-only change.
+
+### Automate GitHub + monorepo settings (Railway GraphQL API)
+
+One-time browser steps still required: [install the Railway GitHub App](https://github.com/settings/installations) and grant it access to your repository.
+
+Then you can wire **repo, branch, root directory, `railway.toml` path, and autodeploy** for each existing service from this repo:
+
+1. Create an [account or workspace API token](https://railway.com/account/tokens) (`RAILWAY_API_TOKEN`).
+2. Copy `scripts/railway/railway.deploy.config.example.json` → `scripts/railway/railway.deploy.config.json` (gitignored) and set `githubRepo`, `branch`, and each `matchName` to match your Railway service names.
+3. From the repo root:
+
+```bash
+export RAILWAY_API_TOKEN="…"
+export RAILWAY_PROJECT_ID="…"   # Cmd/Ctrl+K in Railway → Copy project ID
+# optional: export RAILWAY_ENVIRONMENT_NAME=staging   # default picks "production" or first env
+
+cd scripts && bun run railway:configure-autodeploy
+# preview:   bun run railway:configure-autodeploy --dry-run
+# discover:  bun run railway:list
+# redeploy:  bun run railway:configure-autodeploy --deploy
+```
+
+Implementation: `scripts/railway/configure-github-autodeploy.ts` → Railway public API at `https://backboard.railway.com/graphql/v2` (`serviceConnect`, `serviceInstanceUpdate`, `serviceInstanceAutoDeployUpdate`, optional `serviceInstanceDeploy`). See [Public API](https://docs.railway.com/guides/public-api).
