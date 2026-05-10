@@ -47,3 +47,9 @@ export function since(afterId: number): ArgusEvent[] {
 export function latest(n = 50): ArgusEvent[] {
   return ring.slice(-n);
 }
+
+/** Clear the live feed (e.g. hosted demo reset). */
+export function clearEventRing(): void {
+  ring.length = 0;
+  nextId = 1;
+}

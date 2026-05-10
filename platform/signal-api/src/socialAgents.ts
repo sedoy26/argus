@@ -142,6 +142,17 @@ export function stopSocialAgent(id: string): boolean {
   return true;
 }
 
+/** Stop every poller without per-agent feed lines (batch demo reset). */
+export function stopAllSocialAgents(): number {
+  let n = 0;
+  for (const a of agents.values()) {
+    clearInterval(a.timer);
+    n++;
+  }
+  agents.clear();
+  return n;
+}
+
 function stopAgentsForProfileKey(key: string): void {
   for (const [id, a] of agents) {
     if (profileKey(a.profileUrl) === key) {

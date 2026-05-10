@@ -1,8 +1,9 @@
 // Contributor enrollment + access flags (in-memory; reset on process restart).
 //
-// Privileged wallets (deploy team) get full UI without enrollment.
+// Privileged / admin wallets come from ARGUS_PRIVILEGED_ADDRESSES / ARGUS_ADMIN_ADDRESSES only.
 // Everyone else defaults to "user" until an admin approves a role request.
 // Admin actions require EIP-191 personal_sign over a nonce-bound message.
+// ARGUS_AUTH_STRICT is surfaced to the UI only (stricter messaging); it does not grant roles.
 
 import { verifyMessage } from 'viem';
 
@@ -50,13 +51,16 @@ export function adminAddresses(): Set<string> {
   return privilegedAddresses();
 }
 
+/** Deploy-team allowlist (Scout UI + skip enrollment). Not tied to `ARGUS_AUTH_STRICT`. */
 export function isPrivileged(addr: string): boolean {
-  if (!authStrict()) return true;
   return privilegedAddresses().has(addr.toLowerCase());
 }
 
+/**
+ * Admin moderation + demo reset. Uses `ARGUS_ADMIN_ADDRESSES`, or the privileged set if unset.
+ * `ARGUS_AUTH_STRICT` only affects what the UI shows about signature policy — never elevates random wallets.
+ */
 export function isAdmin(addr: string): boolean {
-  if (!authStrict()) return true;
   return adminAddresses().has(addr.toLowerCase());
 }
 
@@ -229,6 +233,42 @@ export async function adminSetEnrollmentStatus(args: {
   }
   set.add(rec.requestedRole);
   return { ok: true };
+}
+
+/** EIP-191 message for POST /demo/reset — keep in sync with dashboard `buildAdminDemoResetMessage`. */
+export function buildAdminDemoResetMessage(args: { nonce: string }): string {
+  return [
+    'Argus hosted demo reset',
+    '',
+    'This authorizes clearing in-memory signals, events, and demo enrollments on the signal-api.',
+    `Nonce: ${args.nonce}`,
+  ].join('\n');
+}
+
+export async function verifyAdminDemoReset(args: {
+  adminAddress: string;
+  nonce: string;
+  signature: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const admin = args.adminAddress.toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(admin)) return { error: 'bad admin address' };
+  if (!isAdmin(admin)) return { error: 'not an admin wallet' };
+  if (peekNonce('admin', admin) !== args.nonce) {
+    return { error: 'invalid or expired admin nonce' };
+  }
+  const message = buildAdminDemoResetMessage({ nonce: args.nonce });
+  const ok = await verifyWalletSig(admin, message, args.signature);
+  if (!ok) return { error: 'bad admin signature' };
+  if (!consumeNonce('admin', admin, args.nonce)) return { error: 'nonce already used' };
+  return { ok: true };
+}
+
+/** Wipe pending enrollments, role grants, and auth nonces (hosted demo reset). */
+export function resetEnrollmentDemoState(): void {
+  enrollments.length = 0;
+  nextEnrollmentId = 1;
+  approvedRoles.clear();
+  nonces.clear();
 }
 
 export function accessForAddress(address: string | null): {

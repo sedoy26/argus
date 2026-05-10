@@ -72,6 +72,11 @@ export function queryStore(addr: string): ConsensusEnvelope {
   return computeEnvelope(addr.toLowerCase(), list);
 }
 
+/** Drop all standalone signals (Railway / STANDALONE demo reset). */
+export function clearStandaloneSignals(): void {
+  signals.clear();
+}
+
 function computeEnvelope(
   addr: string,
   list: StoredSignal[],

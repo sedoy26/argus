@@ -64,7 +64,7 @@ export function ParallaxLogo({
       const r = el.getBoundingClientRect();
       const px = (e.clientX - r.left) / r.width - 0.5;
       const py = (e.clientY - r.top) / r.height - 0.5;
-      setTilt({ ry: px * intensity, rx: py * -intensity * 0.85 });
+      setTilt({ ry: px * intensity, rx: py * -intensity * 0.96 });
     },
     [intensity],
   );
@@ -85,9 +85,9 @@ export function ParallaxLogo({
         />
       )}
       <div
-        className="relative transition-[transform] duration-150 ease-out will-change-transform motion-reduce:transform-none"
+        className="relative transition-[transform] duration-200 ease-out will-change-transform motion-reduce:transform-none"
         style={{
-          transform: `perspective(1100px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
+          transform: `perspective(820px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
         }}
       >
         <img

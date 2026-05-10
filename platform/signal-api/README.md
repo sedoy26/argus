@@ -13,6 +13,23 @@ returns the TEE-attested consensus envelope.
 | GET | `/boot` | Applet boot commitment + code hash |
 | POST | `/signals` | Submit a verified signal |
 | GET | `/risk/:address` | Query consensus for a contract |
+| POST | `/demo/reset` | Hosted demo reset: clears events, score memory, social agents, enrollments; with `STANDALONE=1` also clears signals. **Auth:** JSON body `{ adminAddress, nonce, signature }` (admin wallet signs `buildAdminDemoResetMessage` in `enrollments.ts` — same text as dashboard) **or** header `x-argus-demo-reset` = `ARGUS_DEMO_RESET_SECRET` (optional env for curl/scripts). On-chain approvals: `scripts/reset-sepolia-approvals.sh`. |
+
+### POST `/demo/reset` (Railway / CI)
+
+**From the Argus dashboard (recommended):** Admin tab → **Reset hosted demo state** (wallet signature; no CLI).
+
+**From curl** (optional shared secret on the server):
+
+```bash
+curl -sS -X POST "$ARGUS_SIGNAL_API/demo/reset" \
+  -H "x-argus-demo-reset: $ARGUS_DEMO_RESET_SECRET" \
+  -H "content-type: application/json" -d '{}'
+```
+
+Or: `scripts/reset-railway-demo.sh` when `ARGUS_DEMO_RESET_SECRET` is set.
+
+In **bridge** mode the applet keeps its own signals — this only clears server-side feed + enrollment demo state; restart QEMU for a full TEE wipe.
 
 ### POST `/signals`
 

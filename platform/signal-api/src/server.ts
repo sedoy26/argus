@@ -18,15 +18,17 @@
 
 import { OrbitportSDK } from '@spacecomputer-io/orbitport-sdk-ts';
 import { bridgeAddress, callApplet, ping } from './bridge.ts';
-import { emit, latest, since } from './events.ts';
-import { queryStore, standaloneBootInfo, storeSignal } from './store.ts';
+import { clearEventRing, emit, latest, since } from './events.ts';
+import { clearStandaloneSignals, queryStore, standaloneBootInfo, storeSignal } from './store.ts';
 import {
   accessForAddress,
   adminListEnrollments,
   adminSetEnrollmentStatus,
   authStrict,
   issueNonce,
+  resetEnrollmentDemoState,
   submitEnrollment,
+  verifyAdminDemoReset,
   type RequestedRole,
 } from './enrollments.ts';
 import {
@@ -44,6 +46,7 @@ import {
   listSocialAgents,
   registerSocialIntelRunner,
   startSocialAgent,
+  stopAllSocialAgents,
   stopSocialAgent,
   type IntelCorroborationResult,
 } from './socialAgents.ts';
@@ -642,6 +645,79 @@ async function handleTelemetry(req: Request): Promise<Response> {
   return json({ ok: true });
 }
 
+/**
+ * Hosted demo reset: clears event feed, score-change memory, social pollers,
+ * and enrollment demo state. In STANDALONE mode also clears consensus signals.
+ *
+ * Auth (either):
+ * - `x-argus-demo-reset` header = env `ARGUS_DEMO_RESET_SECRET` (scripts / CI), or
+ * - JSON body `{ adminAddress, nonce, signature }` with admin EIP-191 over `buildAdminDemoResetMessage` (dashboard).
+ *
+ * On-chain approvals are not changed — use `scripts/reset-sepolia-approvals.sh` (cast).
+ */
+async function handleDemoReset(req: Request): Promise<Response> {
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await readJson(req)) as Record<string, unknown>;
+  } catch {
+    body = {};
+  }
+
+  const headerSecret = Bun.env.ARGUS_DEMO_RESET_SECRET ?? '';
+  const headerOk = headerSecret !== '' && req.headers.get('x-argus-demo-reset') === headerSecret;
+
+  const adminAddress = String(body.adminAddress ?? '').trim().toLowerCase();
+  const nonce = String(body.nonce ?? '');
+  const signature = String(body.signature ?? '');
+
+  const adminPayload =
+    adminAddress &&
+    /^0x[0-9a-f]{40}$/.test(adminAddress) &&
+    nonce &&
+    signature.startsWith('0x');
+
+  let adminOk = false;
+  if (adminPayload) {
+    const r = await verifyAdminDemoReset({ adminAddress, nonce, signature });
+    if ('ok' in r) adminOk = true;
+    else return bad(r.error, 403);
+  }
+
+  if (!headerOk && !adminOk) {
+    return bad(
+      'demo reset unauthorized — use admin-signed JSON body or x-argus-demo-reset header',
+      401,
+    );
+  }
+
+  prevScores.clear();
+  clearEventRing();
+  const socialStopped = stopAllSocialAgents();
+  resetEnrollmentDemoState();
+  let signalsCleared = false;
+  if (STANDALONE) {
+    clearStandaloneSignals();
+    signalsCleared = true;
+  }
+
+  emit('info', 'Demo state reset — feed cleared; re-approve on Sepolia if needed', {
+    standalone: STANDALONE,
+    signalsCleared,
+    socialAgentsStopped: socialStopped,
+  });
+
+  return json({
+    ok: true,
+    standalone: STANDALONE,
+    signalsCleared,
+    socialAgentsStopped: socialStopped,
+    note:
+      STANDALONE
+        ? 'Risk scores are back to NONE until new signals. Restore MockUSDC→FakeSwap approvals on-chain for the guardian demo.'
+        : 'TEE bridge mode: applet signal memory unchanged — restart QEMU / applet for a full consensus reset.',
+  });
+}
+
 registerSocialIntelRunner(runIntelCorroborationFromText);
 
 const server = Bun.serve({
@@ -654,7 +730,7 @@ const server = Bun.serve({
     const corsHeaders = {
       'access-control-allow-origin': '*',
       'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
-      'access-control-allow-headers': 'content-type, x-argus-telemetry',
+      'access-control-allow-headers': 'content-type, x-argus-telemetry, x-argus-demo-reset',
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
     try {
@@ -665,6 +741,7 @@ const server = Bun.serve({
       else if (req.method === 'POST' && path === '/intel') res = await handleIntel(req);
       else if (req.method === 'POST' && path === '/simulate-tx') res = await handleSimulateTx(req);
       else if (req.method === 'POST' && path === '/telemetry') res = await handleTelemetry(req);
+      else if (req.method === 'POST' && path === '/demo/reset') res = await handleDemoReset(req);
       else if (req.method === 'GET' && path === '/auth/nonce') res = handleAuthNonce(url);
       else if (req.method === 'GET' && path === '/access') res = handleAccess(url);
       else if (req.method === 'POST' && path === '/enrollment') res = await handleEnrollmentApply(req);

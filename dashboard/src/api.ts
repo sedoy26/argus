@@ -13,6 +13,12 @@ import type {
   GatewayPreview,
   HealthInfo,
 } from './types';
+import {
+  clearActiveEthereumProvider,
+  getActiveEthereumProvider,
+  setActiveEthereumProvider,
+  type Eip1193Like,
+} from './walletProvider';
 
 function trimSlash(s: string): string {
   return s.replace(/\/+$/, '');
@@ -287,48 +293,79 @@ export function buildAdminModerationMessage(p: {
   return lines.join('\n');
 }
 
+/** Must match `buildAdminDemoResetMessage` in `platform/signal-api/src/enrollments.ts`. */
+export function buildAdminDemoResetMessage(p: { nonce: string }): string {
+  return [
+    'Argus hosted demo reset',
+    '',
+    'This authorizes clearing in-memory signals, events, and demo enrollments on the signal-api.',
+    `Nonce: ${p.nonce}`,
+  ].join('\n');
+}
+
+export async function postDemoReset(p: {
+  adminAddress: string;
+  nonce: string;
+  signature: string;
+}): Promise<{
+  ok: boolean;
+  standalone?: boolean;
+  signalsCleared?: boolean;
+  socialAgentsStopped?: number;
+  note?: string;
+}> {
+  return jsonOrThrow(
+    await fetch(signalUrl('/demo/reset'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(p),
+    }),
+  );
+}
+
+export type { Eip1193Like as EthereumProvider } from './walletProvider';
+
 export async function walletPersonalSign(walletAddress: string, message: string): Promise<string> {
-  const eth = (window as unknown as { ethereum?: { request: (a: { method: string; params: unknown[] }) => Promise<string> } }).ethereum;
-  if (!eth) throw new Error('No Ethereum wallet (install MetaMask)');
+  const eth = getActiveEthereumProvider();
+  if (!eth) throw new Error('No Ethereum wallet — connect again');
   return eth.request({
     method: 'personal_sign',
     params: [message, walletAddress],
-  });
+  }) as Promise<string>;
 }
 
-export async function connectEthereumWallet(): Promise<string> {
-  const eth = (window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<string[]> } }).ethereum;
-  if (!eth) throw new Error('No Ethereum wallet (install MetaMask)');
-  const acc = await eth.request({ method: 'eth_requestAccounts' });
-  const a = acc[0];
-  if (!a || !/^0x[0-9a-fA-F]{40}$/i.test(a)) throw new Error('No account returned');
+/** Use after the user picks a wallet from discovery (EIP-6963 / legacy list). */
+export async function connectWithEthereumProvider(provider: Eip1193Like): Promise<string> {
+  setActiveEthereumProvider(provider);
+  const acc = (await provider.request({ method: 'eth_requestAccounts', params: [] })) as unknown;
+  const list = Array.isArray(acc) ? acc : [];
+  const a = list[0];
+  if (typeof a !== 'string' || !/^0x[0-9a-fA-F]{40}$/i.test(a)) throw new Error('No account returned');
   return a.toLowerCase();
 }
 
 /** Ask the wallet to drop this origin’s account permission (EIP-2255). Best-effort — clears app state either way. */
 export async function revokeWalletConnection(): Promise<void> {
-  const eth = (window as unknown as {
-    ethereum?: {
-      request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
-      disconnect?: () => Promise<void>;
-    };
-  }).ethereum;
-  if (!eth?.request) return;
-  try {
-    await eth.request({
-      method: 'wallet_revokePermissions',
-      params: [{ eth_accounts: {} }],
-    });
-  } catch {
-    /* wallet may not implement revoke — still clear Argus session in the app */
-  }
-  if (typeof eth.disconnect === 'function') {
+  const eth = getActiveEthereumProvider();
+  if (eth?.request) {
     try {
-      await eth.disconnect();
+      await eth.request({
+        method: 'wallet_revokePermissions',
+        params: [{ eth_accounts: {} }],
+      });
+    } catch {
+      /* wallet may not implement revoke — still clear Argus session in the app */
+    }
+  }
+  const disconnect = (eth as { disconnect?: () => Promise<void> } | undefined)?.disconnect;
+  if (typeof disconnect === 'function') {
+    try {
+      await disconnect();
     } catch {
       /* WC / some injected providers */
     }
   }
+  clearActiveEthereumProvider();
 }
 
 export async function submitEnrollmentRequest(p: {

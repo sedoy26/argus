@@ -4,9 +4,10 @@ import { getEnsText } from 'viem/actions';
 import { normalize } from 'viem/ens';
 import { sepolia } from 'viem/chains';
 import {
+  buildAdminDemoResetMessage,
   buildAdminModerationMessage,
   buildEnrollmentSignMessage,
-  connectEthereumWallet,
+  connectWithEthereumProvider,
   revokeWalletConnection,
   getAccess,
   getAuthNonce,
@@ -17,6 +18,7 @@ import {
   getHealth,
   getPreview,
   getRisk,
+  postDemoReset,
   submitEnrollmentRequest,
   submitIntel,
   createSocialAgent,
@@ -38,6 +40,13 @@ import type {
   Score,
 } from './types';
 import { AppBackdrop, BrandMark, ParallaxLogo } from './ui/AppShell';
+import {
+  clearActiveEthereumProvider,
+  discoverWalletOptions,
+  getActiveEthereumProvider,
+  setActiveEthereumProvider,
+  type WalletOption,
+} from './walletProvider';
 
 // ---------------------------------------------------------------------------
 // ArgusRegistry on-chain client
@@ -85,6 +94,8 @@ const ROLE_COLOR = ['text-sky-300', 'text-rose-300', 'text-purple-300'];
 
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 const WALLET_SESSION = 'argus.wallet';
+/** Session key for EIP-6963 wallet uuid or legacy-* / window-ethereum (re-binds signing to the same extension). */
+const WALLET_PROVIDER_ID = 'argus.walletProviderId';
 const ADDON_SOCIAL_SCOUT = 'argus.addon.socialScout';
 const WATCHED_KEY = 'argus.watched.v2';
 const DEMO_CONTRACT = '0x3b38fe80891ec608829e941ef965e1c96d3460d6';
@@ -210,12 +221,15 @@ function useRisks(addresses: string[]) {
   return { risks, refetchAll };
 }
 
-function useEvents() {
+function useEvents(refreshKey: number) {
   const [events, setEvents] = useState<ArgusEvent[]>([]);
   const latestId = useRef(0);
 
   useEffect(() => {
     let active = true;
+    latestId.current = 0;
+    setEvents([]);
+
     const poll = async () => {
       while (active) {
         try {
@@ -236,7 +250,7 @@ function useEvents() {
     };
     void poll();
     return () => { active = false; };
-  }, []);
+  }, [refreshKey]);
 
   return events;
 }
@@ -493,50 +507,179 @@ function EventFeed({ events, filter }: { events: ArgusEvent[]; filter?: EventKin
 function LandingPage({ onConnect }: { onConnect: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const cardRef = useRef<HTMLDivElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
+  const glowRaf = useRef<number | null>(null);
+  const glowPos = useRef<{ x: number; y: number } | null>(null);
+
+  const flushLandingGlow = useCallback(() => {
+    glowRaf.current = null;
+    const glow = glowRef.current;
+    const p = glowPos.current;
+    if (!glow || !p) return;
+    glow.style.background = `radial-gradient(ellipse 420px 360px at ${p.x}px ${p.y}px, rgba(255, 252, 245, 0.038) 0%, rgba(251, 211, 141, 0.016) 42%, rgba(186, 210, 253, 0.009) 58%, transparent 82%)`;
+  }, []);
+
+  const onLandingCardMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = cardRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    glowPos.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+    if (glowRaf.current == null) {
+      glowRaf.current = requestAnimationFrame(flushLandingGlow);
+    }
+  };
+
+  const onLandingCardEnter = () => {
+    const glow = glowRef.current;
+    if (glow) glow.style.opacity = '1';
+  };
+
+  const onLandingCardLeave = () => {
+    glowPos.current = null;
+    if (glowRaf.current != null) {
+      cancelAnimationFrame(glowRaf.current);
+      glowRaf.current = null;
+    }
+    const glow = glowRef.current;
+    if (glow) {
+      glow.style.opacity = '0';
+      glow.style.background = 'transparent';
+    }
+  };
+
   return (
     <div className="relative min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center px-6 py-16 overflow-hidden">
       <AppBackdrop />
       <div className="relative z-10 w-full max-w-md">
-        <div className="glass-surface glass-surface-hover px-8 py-10 text-center space-y-7 motion-safe:hover:-translate-y-0.5">
-          <ParallaxLogo className="h-44 w-44 sm:h-48 sm:w-48" intensity={14} />
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-amber-100 via-amber-300 to-amber-600 bg-clip-text text-transparent">
-              Argus
-            </h1>
-            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-(--color-argus-gold-dim)">hundred-eyed guardian</p>
-          </div>
-          <p className="text-sm text-(--color-argus-muted) leading-relaxed">
-            TEE-attested risk intelligence, Sourcify-backed verification, and automated protection when consensus
-            crosses your threshold. Connect a wallet to open the demo console — judges see a simplified user
-            experience; contributors can request elevated roles for review.
-          </p>
-          {err && (
-            <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-400/25 rounded-xl px-3 py-2 backdrop-blur-sm">
-              {err}
+        <div
+          ref={cardRef}
+          className="glass-surface glass-landing-card relative overflow-hidden px-8 py-10 text-center space-y-7 motion-safe:hover:-translate-y-0.5"
+          onMouseMove={onLandingCardMove}
+          onMouseEnter={onLandingCardEnter}
+          onMouseLeave={onLandingCardLeave}
+        >
+          <div ref={glowRef} className="glass-landing-spotlight" aria-hidden />
+          <div className="relative z-10 space-y-7">
+            <ParallaxLogo className="h-44 w-44 sm:h-48 sm:w-48" intensity={26} />
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-amber-100 via-amber-300 to-amber-600 bg-clip-text text-transparent">
+                Argus
+              </h1>
+              <p className="mt-1 text-xs uppercase tracking-[0.2em] text-(--color-argus-gold-dim)">hundred-eyed guardian</p>
             </div>
-          )}
+            <p className="text-sm text-(--color-argus-muted) leading-relaxed text-left">
+              In myth, Argus never slept — a hundred eyes, none ever closed. Our network doesn&apos;t sleep either.
+              Independent watchers scan every contract you&apos;ve touched, verified by tamper-proof code no one controls.
+              The moment something turns dangerous, your wallet is already protected.
+            </p>
+            <p className="text-sm font-medium text-(--color-argus-text)/90 leading-snug">
+              Connect your wallet. See what Argus sees.
+            </p>
+            {err && (
+              <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-400/25 rounded-xl px-3 py-2 backdrop-blur-sm">
+                {err}
+              </div>
+            )}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void (async () => {
+                  setBusy(true);
+                  setErr('');
+                  try {
+                    await onConnect();
+                  } catch (e) {
+                    setErr((e as Error).message ?? 'connect failed');
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+              className="glass-cta w-full px-8 py-3.5 rounded-xl text-zinc-950 font-semibold text-sm disabled:opacity-40"
+            >
+              {busy ? 'Opening wallet…' : 'Connect your wallet'}
+            </button>
+            <p className="text-[11px] text-(--color-argus-muted)">Sepolia testnet · MetaMask or any injected wallet</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WalletPickerModal({
+  choices,
+  error,
+  onPick,
+  onClose,
+}: {
+  choices: WalletOption[];
+  error: string;
+  onPick: (w: WalletOption) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+        aria-label="Close"
+        onClick={() => {
+          if (!busyId) onClose();
+        }}
+      />
+      <div className="relative z-10 glass-surface max-w-sm w-full p-6 space-y-4 border border-white/10 shadow-2xl">
+        <div className="flex justify-between items-start gap-3">
+          <h2 className="text-sm font-semibold text-(--color-argus-text)">Choose a wallet</h2>
           <button
             type="button"
-            disabled={busy}
-            onClick={() => {
-              void (async () => {
-                setBusy(true);
-                setErr('');
-                try {
-                  await onConnect();
-                } catch (e) {
-                  setErr((e as Error).message ?? 'connect failed');
-                } finally {
-                  setBusy(false);
-                }
-              })();
-            }}
-            className="glass-cta w-full px-8 py-3.5 rounded-xl text-zinc-950 font-semibold text-sm disabled:opacity-40"
+            disabled={!!busyId}
+            className="text-xs text-(--color-argus-muted) hover:text-zinc-200 disabled:opacity-40"
+            onClick={onClose}
           >
-            {busy ? 'Opening wallet…' : 'Connect wallet'}
+            Cancel
           </button>
-          <p className="text-[11px] text-(--color-argus-muted)">Sepolia testnet · MetaMask or any injected wallet</p>
         </div>
+        <p className="text-xs text-(--color-argus-muted) leading-relaxed">
+          Multiple extensions were detected. Pick the one you want for signing and transactions (e.g. MetaMask for a normal-user flow).
+        </p>
+        {error ? (
+          <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-400/25 rounded-xl px-3 py-2">{error}</div>
+        ) : null}
+        <ul className="space-y-2 max-h-[min(52vh,360px)] overflow-y-auto pr-1">
+          {choices.map((w) => (
+            <li key={w.id}>
+              <button
+                type="button"
+                disabled={!!busyId}
+                onClick={() => {
+                  void (async () => {
+                    setBusyId(w.id);
+                    try {
+                      await onPick(w);
+                    } finally {
+                      setBusyId(null);
+                    }
+                  })();
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/10 hover:bg-(--color-argus-card) text-left transition disabled:opacity-45"
+              >
+                {w.icon ? (
+                  <img src={w.icon} alt="" className="h-9 w-9 rounded-lg shrink-0 bg-zinc-900" />
+                ) : (
+                  <div className="h-9 w-9 rounded-lg bg-zinc-700 shrink-0" aria-hidden />
+                )}
+                <span className="text-sm font-medium text-(--color-argus-text)">{w.name}</span>
+                {busyId === w.id ? (
+                  <span className="ml-auto h-4 w-4 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin shrink-0" aria-hidden />
+                ) : null}
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
@@ -1241,56 +1384,90 @@ function RegistryExplorerStrip() {
   );
 }
 
-function ContributorRequestCard({
-  wallet, access, onDone,
+type EnrollRole = 'scout' | 'guardian' | 'watcher';
+
+const ENROLL_ROLE_META: Record<
+  EnrollRole,
+  { label: string; short: string; hint: string; icon: string }
+> = {
+  scout: {
+    label: 'Scout',
+    short: 'Intel',
+    hint: 'Submit social / URL intelligence for corroboration.',
+    icon: '🔭',
+  },
+  guardian: {
+    label: 'Guardian',
+    short: 'Protect',
+    hint: 'Participate in automated approval-revoke operations.',
+    icon: '🛡️',
+  },
+  watcher: {
+    label: 'Watcher',
+    short: 'Analyze',
+    hint: 'Contribute Sourcify-style contract analysis signals.',
+    icon: '👁️',
+  },
+};
+
+/** Left rail: pill per special role → modal → same enrollment queue as admin moderation. */
+function RoleApplicationsRail({
+  wallet,
+  access,
+  onDone,
 }: {
   wallet: string | null;
   access: AccessInfo | null;
   onDone: () => void | Promise<void>;
 }) {
-  const [role, setRole] = useState<'scout' | 'guardian' | 'watcher'>('scout');
+  const [open, setOpen] = useState<EnrollRole | null>(null);
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [err, setErr] = useState('');
+  const [toast, setToast] = useState('');
 
   if (!wallet || !access) return null;
-  if (!access.authStrict) return null;
-  if (access.privileged) return null;
-  if (access.pending) {
+
+  if (access.privileged) {
     return (
-      <div className="glass-surface border-amber-400/30 p-4 text-xs text-amber-200/90 bg-amber-500/5">
-        <div className="font-semibold text-amber-300">Contributor request pending</div>
-        <p className="mt-1 opacity-80">You asked for <span className="font-medium">{access.pending.requestedRole}</span>. An Argus admin will review your request in the admin console.</p>
+      <div className="glass-surface border-emerald-500/20 p-3 space-y-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-200/90">Special roles</div>
+        <p className="text-[10px] text-(--color-argus-muted) leading-snug">
+          This wallet is <span className="text-emerald-300/95">privileged</span> — Scout / Admin are already available. No enrollment request needed.
+        </p>
       </div>
     );
   }
 
-  const submit = () => {
+  const hasRole = (r: EnrollRole) => access.approvedRoles.includes(r);
+  const pendingRole = access.pending?.requestedRole as EnrollRole | undefined;
+  const anyPending = !!access.pending;
+
+  const submit = (role: EnrollRole) => {
     void (async () => {
       setBusy(true);
-      setErr('');
-      setMsg('');
+      setToast('');
       try {
         const { nonce } = await getAuthNonce('user', wallet);
         const message = buildEnrollmentSignMessage({
           address: wallet,
           role,
-          description,
+          description: description.trim(),
           nonce,
         });
         const signature = await walletPersonalSign(wallet, message);
         await submitEnrollmentRequest({
           address: wallet,
           role,
-          description,
+          description: description.trim(),
           nonce,
           signature,
         });
-        setMsg('Request submitted. Refreshing…');
+        setToast('Submitted — an admin will review.');
+        setOpen(null);
+        setDescription('');
         await Promise.resolve(onDone());
       } catch (e) {
-        setErr((e as Error).message ?? 'failed');
+        setToast((e as Error).message ?? 'Request failed');
       } finally {
         setBusy(false);
       }
@@ -1298,45 +1475,129 @@ function ContributorRequestCard({
   };
 
   return (
-    <div className="glass-surface glass-surface-hover p-4 space-y-3 motion-safe:hover:-translate-y-0.5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-(--color-argus-muted)">Become a trusted participant</div>
-      <p className="text-xs text-(--color-argus-muted)">
-        Describe your background and pick a role. An admin reviews the queue and approves — then your wallet unlocks the matching console (e.g. Scout intel panel).
-      </p>
-      <div className="space-y-1">
-        <label className="text-[10px] uppercase text-(--color-argus-muted)">Role</label>
-        <select
-          value={role}
-          onChange={(e) => setRole(e.target.value as 'scout' | 'guardian' | 'watcher')}
-          className="w-full bg-(--color-argus-bg) border border-(--color-argus-border) rounded-md px-2 py-1.5 text-xs"
+    <>
+      <div className="glass-surface border-violet-500/20 p-3 space-y-2.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-200/90">Special roles</div>
+        {!access.authStrict && (
+          <p className="text-[10px] text-sky-200/90 leading-snug rounded-lg border border-sky-500/25 bg-sky-500/10 px-2 py-1.5">
+            Open-access deployment — requests still create a <span className="font-medium text-sky-100">pending</span> row for admins to review when they use the Admin tab.
+          </p>
+        )}
+        <p className="text-[10px] text-(--color-argus-muted) leading-snug">
+          Tap a role, add a short pitch — admins see it as <span className="text-violet-300">pending</span> in their queue.
+        </p>
+        {anyPending && (
+          <div className="text-[10px] rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5 text-amber-100/95">
+            Pending: <span className="font-semibold capitalize">{pendingRole ?? '—'}</span>
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          {(['scout', 'guardian', 'watcher'] as const).map((r) => {
+            const meta = ENROLL_ROLE_META[r];
+            const approved = hasRole(r);
+            const isPendingHere = pendingRole === r;
+            const blocked = anyPending && !isPendingHere;
+            return (
+              <button
+                key={r}
+                type="button"
+                disabled={approved || anyPending}
+                onClick={() => {
+                  if (approved || anyPending) return;
+                  setDescription('');
+                  setToast('');
+                  setOpen(r);
+                }}
+                className={`w-full flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition ${
+                  approved
+                    ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200 cursor-default'
+                    : isPendingHere
+                      ? 'border-amber-400/40 bg-amber-500/15 text-amber-100 cursor-default'
+                      : blocked
+                        ? 'border-(--color-argus-border) bg-white/[0.03] text-zinc-500 cursor-not-allowed'
+                        : 'border-violet-500/35 bg-violet-600/15 text-violet-100 hover:bg-violet-600/25 hover:border-violet-400/50'
+                }`}
+              >
+                <span className="shrink-0 text-sm">{meta.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{meta.label}</span>
+                  <span className="block text-[9px] font-normal opacity-70 truncate">{meta.short}</span>
+                </span>
+                {approved && <span className="shrink-0 text-[10px] text-emerald-300">✓</span>}
+                {isPendingHere && <span className="shrink-0 text-[10px] text-amber-300">…</span>}
+              </button>
+            );
+          })}
+        </div>
+        {toast && (
+          <p className={`text-[10px] leading-snug ${toast.includes('fail') || toast.toLowerCase().includes('error') ? 'text-rose-400' : 'text-emerald-400/90'}`}>
+            {toast}
+          </p>
+        )}
+      </div>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="role-apply-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setOpen(null);
+          }}
         >
-          <option value="scout">Scout (social / intel submission)</option>
-          <option value="guardian">Guardian (protective actions)</option>
-          <option value="watcher">Watcher (Sourcify-style analysis)</option>
-        </select>
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] uppercase text-(--color-argus-muted)">Why you + relevant links</label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={4}
-          placeholder="e.g. I run @cryptoham42 security threads; I can submit Reddit/X intel…"
-          className="w-full bg-(--color-argus-bg) border border-(--color-argus-border) rounded-md px-2 py-1.5 text-xs resize-none"
-        />
-      </div>
-      {err && <div className="text-xs text-rose-400">{err}</div>}
-      {msg && <div className="text-xs text-emerald-400">{msg}</div>}
-      <button
-        type="button"
-        disabled={busy || description.trim().length < 12}
-        onClick={submit}
-        className="w-full py-2 text-xs font-semibold rounded-lg bg-violet-600/80 hover:bg-violet-500/80 text-white disabled:opacity-40"
-      >
-        {busy ? 'Signing…' : 'Sign & submit request'}
-      </button>
-      <p className="text-[10px] text-(--color-argus-muted)">Uses a one-time nonce + wallet signature — no passwords stored.</p>
-    </div>
+          <div
+            className="w-full max-w-md glass-surface border-violet-500/30 p-5 space-y-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 id="role-apply-title" className="text-sm font-semibold text-violet-100">
+                  Apply as {ENROLL_ROLE_META[open].label}
+                </h2>
+                <p className="text-[11px] text-(--color-argus-muted) mt-0.5">{ENROLL_ROLE_META[open].hint}</p>
+              </div>
+              <button
+                type="button"
+                className="text-(--color-argus-muted) hover:text-white text-lg leading-none px-1"
+                onClick={() => setOpen(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase text-(--color-argus-muted)">Why you + links (min 12 chars)</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={5}
+                placeholder="Background, relevant accounts, what you’ll contribute…"
+                className="w-full bg-(--color-argus-bg) border border-(--color-argus-border) rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-xs rounded-lg border border-(--color-argus-border) text-(--color-argus-muted) hover:text-(--color-argus-text)"
+                onClick={() => setOpen(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy || description.trim().length < 12}
+                onClick={() => submit(open)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-violet-600/85 hover:bg-violet-500/85 text-white disabled:opacity-40"
+              >
+                {busy ? 'Signing…' : 'Sign & submit'}
+              </button>
+            </div>
+            <p className="text-[10px] text-(--color-argus-muted)">One-time nonce + wallet signature — same flow as the admin moderation queue.</p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1474,13 +1735,21 @@ function UserView({
   const txBlocked = events.filter((e) => e.kind === 'tx_blocked');
   const alertEvents = events.filter((e) => ['score_changed', 'guardian_trigger', 'signal_received', 'tx_blocked'].includes(e.kind));
   const approvedScout = !!(access && (access.privileged || access.approvedRoles.includes('scout')));
+  /** Left rail whenever we know access — not gated on authStrict (that hides the whole column in dev/Railway). */
+  const showRoleRail = !!(wallet && access);
 
   const bannerClass = isAtRisk
     ? 'border-red-500/50 bg-red-500/10'
     : 'border-emerald-500/30 bg-emerald-500/5';
 
   return (
-    <div className="space-y-6">
+    <div className={showRoleRail ? 'grid gap-6 md:grid-cols-[minmax(0,11rem)_1fr] lg:grid-cols-[minmax(0,13.5rem)_1fr] items-start' : 'space-y-6'}>
+      {showRoleRail && (
+        <aside className="space-y-3 md:sticky md:top-24 lg:top-28 order-2 md:order-1 self-start">
+          <RoleApplicationsRail wallet={wallet} access={access} onDone={onAccessRefresh} />
+        </aside>
+      )}
+      <div className={showRoleRail ? 'space-y-6 min-w-0 order-1 md:order-2' : 'space-y-6'}>
       <UserWalletSnapshot score={score} />
       <RegistryExplorerStrip />
       <EnsCcipRiskLookup />
@@ -1491,7 +1760,6 @@ function UserView({
           onSocialChange={onSocialChange}
         />
       )}
-      <ContributorRequestCard wallet={wallet} access={access} onDone={onAccessRefresh} />
 
       {/* status banner */}
       <div className={`glass-surface glass-surface-hover p-5 motion-safe:hover:-translate-y-0.5 ${bannerClass}`}>
@@ -1600,6 +1868,7 @@ function UserView({
           {alertEvents.map((ev) => <EventRow key={ev.id} ev={ev} />)}
         </div>
       </div>
+      </div>
     </div>
   );
 }
@@ -1612,11 +1881,21 @@ function UserView({
 // AdminView – on-chain ArgusRegistry management
 // ---------------------------------------------------------------------------
 
-function AdminView({ wallet, onAccessRefresh }: { wallet: string; onAccessRefresh: () => Promise<void> }) {
+function AdminView({
+  wallet,
+  onAccessRefresh,
+  onDemoReset,
+}: {
+  wallet: string;
+  onAccessRefresh: () => Promise<void>;
+  onDemoReset: () => void;
+}) {
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
   const [owner, setOwner] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [demoResetBusy, setDemoResetBusy] = useState(false);
+  const [demoResetMsg, setDemoResetMsg] = useState('');
   const [txStatus, setTxStatus] = useState<Record<string, string>>({});
   const [filterRole, setFilterRole] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<number | null>(null);
@@ -1648,10 +1927,10 @@ function AdminView({ wallet, onAccessRefresh }: { wallet: string; onAccessRefres
 
 
   const sendTx = useCallback(async (agentAddr: string, action: 'approve' | 'revoke') => {
-    const eth = (window as unknown as Record<string, { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } | undefined>).ethereum;
+    const eth = getActiveEthereumProvider();
 
     if (!eth) {
-      setTxStatus(prev => ({ ...prev, [agentAddr]: '⚠ MetaMask not detected — copy calldata below' }));
+      setTxStatus(prev => ({ ...prev, [agentAddr]: '⚠ Wallet not connected — copy calldata below' }));
       return;
     }
 
@@ -1697,12 +1976,32 @@ function AdminView({ wallet, onAccessRefresh }: { wallet: string; onAccessRefres
     (filterStatus === null || a.status === filterStatus)
   ), [agents, filterRole, filterStatus]);
 
+  const runHostedDemoReset = () => {
+    void (async () => {
+      setDemoResetBusy(true);
+      setDemoResetMsg('');
+      try {
+        const { nonce } = await getAuthNonce('admin', wallet);
+        const message = buildAdminDemoResetMessage({ nonce });
+        const signature = await walletPersonalSign(wallet, message);
+        const res = await postDemoReset({ adminAddress: wallet, nonce, signature });
+        setDemoResetMsg(res.note ?? 'Hosted demo state cleared.');
+        await onAccessRefresh();
+        onDemoReset();
+      } catch (e) {
+        setDemoResetMsg((e as Error).message ?? 'Reset failed');
+      } finally {
+        setDemoResetBusy(false);
+      }
+    })();
+  };
+
   const submitRegister = () => {
     if (!ADDR_RE.test(regAddr)) { setRegErr('invalid address'); return; }
     if (!regEns) { setRegErr('ENS name required'); return; }
     setRegErr('');
-    const eth = (window as unknown as Record<string, { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } | undefined>).ethereum;
-    if (!eth) { setRegErr('MetaMask required for write ops'); return; }
+    const eth = getActiveEthereumProvider();
+    if (!eth) { setRegErr('Connect with a browser wallet for write ops'); return; }
     void (async () => {
       try {
         const accounts = await eth.request({ method: 'eth_requestAccounts' }) as string[];
@@ -1871,6 +2170,27 @@ function AdminView({ wallet, onAccessRefresh }: { wallet: string; onAccessRefres
           ))}
         </div>
       )}
+
+      <div className="rounded-xl border border-amber-500/25 bg-amber-950/15 p-4 space-y-2">
+        <div className="text-sm font-medium text-amber-200/95">Hosted demo environment</div>
+        <p className="text-[11px] text-(--color-argus-muted) leading-relaxed">
+          Clears signal-api in-memory scores, the live event feed, social pollers, and demo enrollments.
+          In standalone mode consensus returns to NONE. Guardian revoke on Sepolia is not undone — re-approve MockUSDC with cast if needed.
+        </p>
+        <button
+          type="button"
+          disabled={demoResetBusy}
+          onClick={runHostedDemoReset}
+          className="px-3 py-2 text-xs rounded-lg border border-amber-500/40 bg-amber-600/20 text-amber-100 font-medium hover:bg-amber-600/30 transition disabled:opacity-40"
+        >
+          {demoResetBusy ? 'Waiting for wallet…' : 'Reset hosted demo state'}
+        </button>
+        {demoResetMsg && (
+          <p className={`text-[11px] leading-snug ${demoResetMsg.toLowerCase().includes('fail') || demoResetMsg.toLowerCase().includes('error') || demoResetMsg.toLowerCase().includes('unauthorized') ? 'text-rose-400' : 'text-emerald-400/90'}`}>
+            {demoResetMsg}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -1980,8 +2300,28 @@ function readWalletSession(): string | null {
   }
 }
 
+/** Drop legacy sessions that only stored an address (signing would still use the wrong `window.ethereum`). */
+function readInitialWallet(): string | null {
+  const addr = readWalletSession();
+  if (!addr) return null;
+  try {
+    if (!sessionStorage.getItem(WALLET_PROVIDER_ID)) {
+      sessionStorage.removeItem(WALLET_SESSION);
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return addr;
+}
+
 export function App() {
-  const [wallet, setWallet] = useState<string | null>(readWalletSession);
+  const [wallet, setWallet] = useState<string | null>(readInitialWallet);
+  /** False on first paint when restoring a session until we re-bind the same extension via EIP-6963 id. */
+  const [walletTransportReady, setWalletTransportReady] = useState(() => readInitialWallet() == null);
+  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
+  const [walletPickerChoices, setWalletPickerChoices] = useState<WalletOption[]>([]);
+  const [walletPickerErr, setWalletPickerErr] = useState('');
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [accessErr, setAccessErr] = useState('');
   const [socialAddon, setSocialAddon] = useState(loadSocialAddon);
@@ -1992,7 +2332,13 @@ export function App() {
   const { data: health } = usePoll(getHealth, 5_000, []);
   const { data: boot } = usePoll(getBoot, 5_000, []);
   const { risks, refetchAll } = useRisks(watched);
-  const events = useEvents();
+  const [eventsTick, setEventsTick] = useState(0);
+  const events = useEvents(eventsTick);
+
+  const bumpAfterDemoReset = useCallback(() => {
+    setEventsTick((t) => t + 1);
+    void refetchAll();
+  }, [refetchAll]);
 
   const refreshAccess = useCallback(async (addr?: string | null) => {
     const a = (addr ?? wallet)?.toLowerCase();
@@ -2034,25 +2380,89 @@ export function App() {
     setRole(access.privileged ? 'scout' : 'user');
   }, [wallet, access]);
 
-  const connect = useCallback(async () => {
-    const addr = await connectEthereumWallet();
+  useEffect(() => {
+    let pid: string | null = null;
     try {
-      sessionStorage.setItem(WALLET_SESSION, addr);
-    } catch { /* ignore */ }
-    roleInitForWallet.current = null;
-    setWallet(addr);
-    await refreshAccess(addr);
+      pid = sessionStorage.getItem(WALLET_PROVIDER_ID);
+    } catch {
+      setWalletTransportReady(true);
+      return;
+    }
+    const addr = readWalletSession();
+    if (!addr || !pid) {
+      setWalletTransportReady(true);
+      return;
+    }
+    void (async () => {
+      const opts = await discoverWalletOptions();
+      const o = opts.find((x) => x.id === pid);
+      if (o) {
+        setActiveEthereumProvider(o.provider);
+        setWalletTransportReady(true);
+        return;
+      }
+      clearActiveEthereumProvider();
+      try {
+        sessionStorage.removeItem(WALLET_PROVIDER_ID);
+        sessionStorage.removeItem(WALLET_SESSION);
+      } catch { /* ignore */ }
+      setWallet(null);
+      setAccess(null);
+      setWalletTransportReady(true);
+    })();
+  }, []);
+
+  const beginConnect = useCallback(async () => {
+    const opts = await discoverWalletOptions();
+    if (opts.length === 0) {
+      throw new Error('No browser wallet found. Install MetaMask or another wallet extension.');
+    }
+    if (opts.length === 1) {
+      const only = opts[0]!;
+      const addr = await connectWithEthereumProvider(only.provider);
+      try {
+        sessionStorage.setItem(WALLET_SESSION, addr);
+        sessionStorage.setItem(WALLET_PROVIDER_ID, only.id);
+      } catch { /* ignore */ }
+      roleInitForWallet.current = null;
+      setWallet(addr);
+      await refreshAccess(addr);
+      return;
+    }
+    setWalletPickerErr('');
+    setWalletPickerChoices(opts);
+    setWalletPickerOpen(true);
+  }, [refreshAccess]);
+
+  const completeWalletPick = useCallback(async (opt: WalletOption) => {
+    setWalletPickerErr('');
+    try {
+      const addr = await connectWithEthereumProvider(opt.provider);
+      try {
+        sessionStorage.setItem(WALLET_SESSION, addr);
+        sessionStorage.setItem(WALLET_PROVIDER_ID, opt.id);
+      } catch { /* ignore */ }
+      roleInitForWallet.current = null;
+      setWalletPickerOpen(false);
+      setWallet(addr);
+      await refreshAccess(addr);
+    } catch (e) {
+      setWalletPickerErr((e as Error).message ?? 'connect failed');
+    }
   }, [refreshAccess]);
 
   const clearWalletSession = useCallback(() => {
     try {
       sessionStorage.removeItem(WALLET_SESSION);
+      sessionStorage.removeItem(WALLET_PROVIDER_ID);
     } catch { /* ignore */ }
+    clearActiveEthereumProvider();
     roleInitForWallet.current = null;
     setWallet(null);
     setAccess(null);
     setAccessErr('');
     setRole('user');
+    setWalletTransportReady(true);
   }, []);
 
   const disconnect = useCallback(() => {
@@ -2063,13 +2473,14 @@ export function App() {
   }, [clearWalletSession]);
 
   useEffect(() => {
-    const eth = (window as unknown as {
-      ethereum?: {
-        on?: (ev: string, fn: (...args: unknown[]) => void) => void;
-        removeListener?: (ev: string, fn: (...args: unknown[]) => void) => void;
-        off?: (ev: string, fn: (...args: unknown[]) => void) => void;
-      };
-    }).ethereum;
+    if (!wallet || !walletTransportReady) return;
+    const eth = getActiveEthereumProvider() as
+      | {
+          on?: (ev: string, fn: (...args: unknown[]) => void) => void;
+          removeListener?: (ev: string, fn: (...args: unknown[]) => void) => void;
+          off?: (ev: string, fn: (...args: unknown[]) => void) => void;
+        }
+      | undefined;
     const subOn = eth?.on;
     const subOff = eth?.removeListener ?? eth?.off;
     if (typeof subOn !== 'function' || typeof subOff !== 'function') return;
@@ -2104,7 +2515,7 @@ export function App() {
         subOff('accountsChanged', onAccountsChanged);
       } catch { /* ignore */ }
     };
-  }, [clearWalletSession, refreshAccess]);
+  }, [wallet, walletTransportReady, clearWalletSession, refreshAccess]);
 
   useEffect(() => saveWatched(watched), [watched]);
 
@@ -2123,7 +2534,37 @@ export function App() {
   }, [watched, risks]);
 
   if (!wallet) {
-    return <LandingPage onConnect={connect} />;
+    return (
+      <>
+        <LandingPage onConnect={beginConnect} />
+        {walletPickerOpen ? (
+          <WalletPickerModal
+            choices={walletPickerChoices}
+            error={walletPickerErr}
+            onPick={completeWalletPick}
+            onClose={() => {
+              setWalletPickerOpen(false);
+              setWalletPickerErr('');
+            }}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  if (!walletTransportReady) {
+    return (
+      <div className="relative min-h-screen text-(--color-argus-text) flex flex-col items-center justify-center gap-4 px-6">
+        <AppBackdrop />
+        <div className="relative z-10 glass-surface px-8 py-10 flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
+          <p className="text-sm text-(--color-argus-muted)">Preparing your wallet…</p>
+          <button type="button" onClick={() => void disconnect()} className="text-xs text-rose-400 hover:text-rose-300">
+            Log out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!access && !accessErr) {
@@ -2228,7 +2669,7 @@ export function App() {
         </main>
       ) : role === 'user' ? (
         /* ── User view ─────────────────────────────────────────────── */
-        <main className="relative z-10 max-w-3xl mx-auto px-6 py-8">
+        <main className="relative z-10 max-w-5xl mx-auto px-6 py-8">
           <div className="mb-6">
             <h1 className="text-lg font-semibold">Your Wallet Protection</h1>
             <p className="text-sm text-(--color-argus-muted) mt-1">
@@ -2251,7 +2692,11 @@ export function App() {
       ) : (
         /* ── Admin view ────────────────────────────────────────────── */
         <main className="relative z-10 max-w-5xl mx-auto px-6 py-8">
-          <AdminView wallet={wallet} onAccessRefresh={() => refreshAccess(wallet)} />
+          <AdminView
+            wallet={wallet}
+            onAccessRefresh={() => refreshAccess(wallet)}
+            onDemoReset={bumpAfterDemoReset}
+          />
         </main>
       )}
 
