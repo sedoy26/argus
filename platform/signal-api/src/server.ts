@@ -22,10 +22,12 @@ import { clearEventRing, emit, latest, since } from './events.ts';
 import { clearStandaloneSignals, queryStore, standaloneBootInfo, storeSignal } from './store.ts';
 import {
   accessForAddress,
+  adminAddresses,
   adminListEnrollments,
   adminSetEnrollmentStatus,
   authStrict,
   issueNonce,
+  privilegedAddresses,
   resetEnrollmentDemoState,
   submitEnrollment,
   verifyAdminDemoReset,
@@ -535,7 +537,14 @@ function handleAuthNonce(url: URL): Response {
 function handleAccess(url: URL): Response {
   const address = url.searchParams.get('address');
   const acc = accessForAddress(address);
-  return json({ ...acc, authStrict: authStrict() });
+  return json(
+    { ...acc, authStrict: authStrict() },
+    {
+      headers: {
+        'cache-control': 'no-store, private, max-age=0',
+      },
+    },
+  );
 }
 
 async function handleEnrollmentApply(req: Request): Promise<Response> {
@@ -778,3 +787,6 @@ emit('boot', `Argus signal-api started (${STANDALONE ? 'standalone' : 'TEE bridg
 
 console.log(`[signal-api] listening on http://localhost:${server.port}`);
 console.log(`[signal-api] mode          ${STANDALONE ? 'standalone (no TEE)' : 'bridge → ' + bridgeAddress}`);
+console.log(
+  `[signal-api] access allowlists  privileged=${privilegedAddresses().size} admin=${adminAddresses().size} (set ARGUS_PRIVILEGED_ADDRESSES / ARGUS_ADMIN_ADDRESSES only for real deploy wallets)`,
+);

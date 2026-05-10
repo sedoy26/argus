@@ -201,6 +201,18 @@ export async function deleteSocialAgent(id: string): Promise<{ ok: boolean }> {
 
 // ── Access & contributor enrollment (signed) ───────────────────────────────
 
+/** Only literal true / "true" / "1" grant elevated UI — avoids !!\"false\" === true bugs. */
+function parseAccessBool(v: unknown): boolean {
+  if (v === true) return true;
+  if (v === false) return false;
+  if (typeof v === 'number') return v !== 0;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    return s === 'true' || s === '1';
+  }
+  return false;
+}
+
 export interface AccessInfo {
   privileged: boolean;
   isAdmin: boolean;
@@ -238,17 +250,19 @@ function normalizeAccessPayload(raw: unknown): AccessInfo {
   }
 
   return {
-    privileged: !!o.privileged,
-    isAdmin: !!o.isAdmin,
+    privileged: parseAccessBool(o.privileged),
+    isAdmin: parseAccessBool(o.isAdmin),
     approvedRoles,
     pending,
-    authStrict: !!o.authStrict,
+    authStrict: parseAccessBool(o.authStrict),
   };
 }
 
 export async function getAccess(address: string): Promise<AccessInfo> {
   const raw = await jsonOrThrow<unknown>(
-    await fetch(signalUrl(`/access?address=${encodeURIComponent(address)}`)),
+    await fetch(signalUrl(`/access?address=${encodeURIComponent(address)}`), {
+      cache: 'no-store',
+    }),
   );
   return normalizeAccessPayload(raw);
 }
