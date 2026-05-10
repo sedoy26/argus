@@ -13,7 +13,7 @@ Argus is a **security intelligence and demo stack** for Ethereum that combines:
 3. **Optional TEE-backed consensus** — when the GoTEE bridge and QEMU appliance are running locally, the Rust **Trusted Applet** in `platform/tee` computes consensus and returns **real** boot / attestation metadata over TCP (`DEVICE_HOST` / `DEVICE_PORT`, default `127.0.0.1:4000`).
 4. **Standalone consensus** — when `STANDALONE=1`, the same HTTP API runs **in-process** consensus (mirroring applet rules) with **placeholder** boot hash and **deterministic mock** attestation fields. This mode is used for **cloud deploys** (e.g. Railway) where QEMU is not attached.
 5. **ENS CCIP-Read gateway** (`platform/ens-resolver`) — resolves wildcard-style queries by calling signal-api and mapping envelope fields to ENS text records; includes a human **`/preview/:addr`** JSON view.
-6. **Dashboard** (`dashboard/`) — React + Vite + Tailwind 4: wallet connect, **role-gated** Scout / User / Admin experiences, intel submission, **social profile agents**, live event feed, contract cards, and a **glass / motion** UI with the Argus brand mark.
+6. **Dashboard** (`dashboard/`) — React + Vite + Tailwind 4: **EIP-6963** wallet discovery (with legacy fallback), **role-gated** Scout / User / Admin experiences, intel submission, **social profile agents**, live event feed, contract cards, and a **glass / motion** UI with the Argus brand mark.
 7. **Agents** (repo `agents/*`) — separate processes: Sourcify-oriented watcher, Apify-oriented scout, on-chain watcher, guardian (KMS-oriented); they speak to signal-api over HTTP.
 
 **Important distinction:** “Production hardening” in the sense of multi-tenant persistence, signed gateway responses, and KMS-only guardians is **not** fully realized; the repo is **hackathon-grade** with clear extension points.
@@ -64,7 +64,7 @@ Three services are set up for **public demo** behavior:
 
 **Access & enrollment (in-memory)**
 
-- `GET /access?address=…` — privileged / admin lists, approved roles, pending enrollment, `authStrict` flag.
+- `GET /access?address=…` — privileged / admin flags, approved roles, pending enrollment, `authStrict`, and **`queriedAddress`** (normalized echo of the query param so the UI can detect stripped proxies). Response uses **`Cache-Control: no-store`** so CDNs/browsers do not reuse another wallet’s JSON.
 - `GET /auth/nonce` — scoped nonces for signing flows.
 - `POST /enrollment` — signed contributor request.
 - `POST /enrollment/moderate` — admin signed approve/reject/list.
@@ -99,8 +99,8 @@ Three services are set up for **public demo** behavior:
 
 **UX**
 
-- Landing → **Connect wallet** (injected Ethereum provider).
-- **Role tabs:** Scout (privileged or approved scout), User, Admin (admin list).
+- Landing → **Connect wallet**: EIP-6963 announcements drive the picker when available (avoids duplicate “MetaMask” rows that were really Rainbow / multiplexer duplicates). Legacy `window.ethereum.providers` is used only if nothing announces in time.
+- **Role tabs:** Scout (privileged allowlist or approved scout enrollment), User, Admin (**only** `ARGUS_ADMIN_ADDRESSES` — not inferred from the scout list).
 - **Scout:** Intel panel (tweet URL / free text), **social agents** panel, watchlist, live **event feed**, contract **cards**, **detail** panel (envelope + gateway preview records).
 - **User:** Demo “wallet protection” narrative around the **Sepolia FakeSwapNet** demo address, bundles / social add-on toggle, contributor enrollment card, simplified alerts.
 - **Admin:** Enrollment moderation queue (signed list / approve / reject).
@@ -110,6 +110,7 @@ Three services are set up for **public demo** behavior:
 - Dev **Vite proxy** (`/api`, `/gw`) with overrides via `VITE_API_TARGET` / `VITE_GW_TARGET` or repo `scripts/.env` keys `ARGUS_API` / `ARGUS_GATEWAY`.
 - Production **`signalUrl` / `gatewayUrl`** via `VITE_SIGNAL_API` / `VITE_GATEWAY_URL` + optional **localStorage** overrides.
 - **Glassmorphism** UI (`glass-surface`, aurora backdrop, parallax brand logo on landing, larger header mark).
+- **`/access` client:** strict boolean parsing for flags, `fetch(..., { cache: 'no-store' })`, verification that **`queriedAddress`** matches the connected wallet when the API provides it, and a **generation guard** so an in-flight `/access` for a previous account cannot overwrite access after a wallet switch.
 - Error boundary (see `main.tsx` in repo history) and defensive wallet `accountsChanged` handling where providers are brittle.
 
 ### 3.5 `contracts/` (Foundry)
@@ -163,7 +164,7 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 | **Social agents (Reddit)** | **Works** for public JSON endpoints without keys. | Polling is server-side; state is in-memory. |
 | **Social agents (X/Twitter)** | **Works when `APIFY_TOKEN`** is configured on signal-api. | Otherwise expect errors or reduced behavior. |
 | **`scripts/demo.ts` full chain** | **Works when prerequisites running** (QEMU, signal-api, paths in script). | Heavy; best pre-stage / recorded backup (see `presentation/`). |
-| **Railway standalone stack** | **Deployed pattern** | signal-api + gateway + static dashboard; **no** TEE attestation equivalence to QEMU mode. |
+| **Railway standalone stack** | **Deployed pattern** | signal-api + gateway + static dashboard; **no** TEE attestation equivalence to QEMU mode. Set **`ARGUS_ADMIN_ADDRESSES`** on signal-api for the wallet(s) that may use Admin / demo reset; **`ARGUS_PRIVILEGED_ADDRESSES`** is for Scout bypass only (comma-separated `0x…40`). |
 
 ### 4.3 UI / product demos (manual checklist)
 
@@ -184,7 +185,7 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 | Gateway authenticity | CCIP URLs trusted by resolver config; README notes **no Ed25519 gateway signature** in Solidity callback. | Sign gateway responses; verify on-chain. |
 | Standalone attestation | Deterministic placeholder hash / “fingerprint”. | Only advertise as demo; or tie to real remote attestation service. |
 | CORS | Permissive `*` on API / gateway. | Restrict to known dashboard origins in production. |
-| Auth | Server-side lists + signed messages; no on-chain identity registry required. | Tie enrollments to on-chain roles or SIWE session. |
+| Auth | Server-side allowlists + signed messages; **admin** and **scout bypass** are separate env vars (`ARGUS_ADMIN_ADDRESSES` vs `ARGUS_PRIVILEGED_ADDRESSES`); dashboard hardens `/access` races and caching. | Tie enrollments to on-chain roles or SIWE session; tighten CORS to dashboard origins. |
 
 ### 5.2 Persistence & ops
 
@@ -224,7 +225,9 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 | `PORT` | HTTP listen (Railway injects). |
 | `DEVICE_HOST` / `DEVICE_PORT` | Bridge target when not standalone. |
 | `APIFY_TOKEN` | Enables Twitter path in intel / social agents. |
-| `ARGUS_AUTH_STRICT`, `ARGUS_PRIVILEGED_ADDRESSES`, `ARGUS_ADMIN_ADDRESSES` | Access control lists (see `enrollments.ts`). |
+| `ARGUS_AUTH_STRICT` | Stricter UI messaging around signatures; does **not** grant roles by itself. |
+| `ARGUS_PRIVILEGED_ADDRESSES` | Comma-separated wallets that get **Scout** UI without enrollment (deploy / demo team). |
+| `ARGUS_ADMIN_ADDRESSES` | Comma-separated wallets allowed for **Admin** tab, enrollment moderation, and signed **demo reset**. **Required** for any admin — there is **no** fallback to the privileged list. |
 | `ORBITPORT_*` | Optional hardware-backed nonce path. |
 
 ### ens-resolver
@@ -247,8 +250,8 @@ Legend: **Automated** = repo smoke/unit script exists. **Manual** = validated in
 
 ## 7. Single paragraph “elevator” status
 
-**Argus today** ships a **credible demo stack**: contributors and agents can push **verified-style signals** into a **TEE-backed or standalone** consensus engine, query **per-contract risk**, expose that risk through an **ENS CCIP gateway**, and operate a **role-aware dashboard** with **intel**, **social polling agents**, and **signed enrollment**. **Automated smokes** cover the watcher and scout pipelines and basic API/gateway wiring; the **full QEMU + demo.ts theatre** remains the gold-path **local** proof. **Railway** hosts a **standalone** triangle (API + gateway + UI) suitable for judges and URLs, while **serious production** still needs **persistence, stricter CORS, signed gateway data, and real attestation policy** aligned with what you claim on stage.
+**Argus today** ships a **credible demo stack**: contributors and agents can push **verified-style signals** into a **TEE-backed or standalone** consensus engine, query **per-contract risk**, expose that risk through an **ENS CCIP gateway**, and operate a **role-aware dashboard** with **intel**, **social polling agents**, and **signed enrollment** — with **explicit server allowlists** separating **scout bypass** from **admin** on hosted APIs. **Automated smokes** cover the watcher and scout pipelines and basic API/gateway wiring; the **full QEMU + demo.ts theatre** remains the gold-path **local** proof. **Railway** hosts a **standalone** triangle (API + gateway + UI) suitable for judges and URLs, while **serious production** still needs **persistence, stricter CORS, signed gateway data, and real attestation policy** aligned with what you claim on stage.
 
 ---
 
-*Last updated from repository inspection (dashboard, signal-api, ens-resolver, agents, scripts, contracts layout). Update this file when deployment topology or trust claims change.*
+*Last updated: access-control model (separate admin vs privileged allowlists, `/access` echo + no-store, client race/cache hardening), EIP-6963-first wallet picker, and Railway env notes. Update when deployment topology or trust claims change.*
