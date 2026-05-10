@@ -9,7 +9,8 @@
  *
  * Usage:
  *   export RAILWAY_API_TOKEN="…"
- *   export RAILWAY_PROJECT_ID="…"   # project UUID
+ *   export RAILWAY_PROJECT_ID="…"   # optional if set in railway.deploy.config.json as projectId
+ *   export RAILWAY_ENVIRONMENT_ID="…" # optional; overrides environmentName when set
  *   cp scripts/railway/railway.deploy.config.example.json scripts/railway/railway.deploy.config.json
  *   # edit githubRepo + matchName strings to match your Railway service names
  *   bun run scripts/railway/configure-github-autodeploy.ts
@@ -27,6 +28,10 @@ type ServiceEdge = { node: { id: string; name: string } };
 type EnvEdge = { node: { id: string; name: string } };
 
 type DeployConfig = {
+  /** Optional; else use `RAILWAY_PROJECT_ID` env. */
+  projectId?: string;
+  /** Optional; else match `environmentName` / `RAILWAY_ENVIRONMENT_NAME`, or first env. */
+  environmentId?: string;
   githubRepo: string;
   branch: string;
   environmentName?: string;
@@ -42,16 +47,24 @@ function argFlag(name: string): boolean {
   return process.argv.includes(name);
 }
 
-function loadConfig(): DeployConfig {
-  const path = `${import.meta.dir}/railway.deploy.config.json`;
-  let raw: string;
+const CONFIG_PATH = `${import.meta.dir}/railway.deploy.config.json`;
+
+function readDeployFile(): Record<string, unknown> | null {
   try {
-    raw = Bun.file(path).textSync();
+    const raw = Bun.file(CONFIG_PATH).textSync();
+    return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    console.error(`Missing ${path}. Copy railway.deploy.config.example.json and edit.`);
+    return null;
+  }
+}
+
+function loadConfig(): DeployConfig {
+  const raw = readDeployFile();
+  if (!raw || !Array.isArray(raw.services)) {
+    console.error(`Missing or invalid ${CONFIG_PATH}. Copy railway.deploy.config.example.json and edit.`);
     process.exit(1);
   }
-  return JSON.parse(raw) as DeployConfig;
+  return raw as unknown as DeployConfig;
 }
 
 async function gql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
@@ -90,9 +103,18 @@ function resolveServiceId(services: ServiceEdge[], matchName: string, explicit?:
   return hit.node.id;
 }
 
-function pickEnvironment(edges: EnvEdge[], name?: string): { id: string; name: string } {
+function pickEnvironment(
+  edges: EnvEdge[],
+  opts?: { name?: string; id?: string },
+): { id: string; name: string } {
   if (!edges.length) throw new Error('Project has no environments');
-  const want = (name ?? 'production').toLowerCase();
+  const id = opts?.id?.trim();
+  if (id) {
+    const byId = edges.find((e) => e.node.id === id);
+    if (byId) return { id: byId.node.id, name: byId.node.name };
+    return { id, name: '(id not in project list — verify in Railway)' };
+  }
+  const want = (opts?.name ?? 'production').toLowerCase();
   const byName = edges.find((e) => e.node.name.toLowerCase() === want);
   if (byName) return { id: byName.node.id, name: byName.node.name };
   return { id: edges[0]!.node.id, name: edges[0]!.node.name };
@@ -134,13 +156,17 @@ mutation Deploy($serviceId: String!, $environmentId: String!) {
 
 async function main() {
   const token = process.env.RAILWAY_API_TOKEN?.trim();
-  const projectId = process.env.RAILWAY_PROJECT_ID?.trim();
   if (!token) {
     console.error('Set RAILWAY_API_TOKEN (account or workspace token from railway.com/account/tokens).');
     process.exit(1);
   }
+
+  const fileMeta = readDeployFile();
+  const projectId =
+    process.env.RAILWAY_PROJECT_ID?.trim() ||
+    (typeof fileMeta?.projectId === 'string' ? fileMeta.projectId.trim() : '');
   if (!projectId) {
-    console.error('Set RAILWAY_PROJECT_ID (Railway dashboard → Cmd/Ctrl+K → Copy project ID).');
+    console.error('Set RAILWAY_PROJECT_ID or add "projectId" to scripts/railway/railway.deploy.config.json.');
     process.exit(1);
   }
 
@@ -155,7 +181,14 @@ async function main() {
 
   const proj = data.project;
   const services = proj.services.edges;
-  const env = pickEnvironment(proj.environments.edges, process.env.RAILWAY_ENVIRONMENT_NAME);
+  const envIdFromEnv = process.env.RAILWAY_ENVIRONMENT_ID?.trim();
+  const envIdFromFile = typeof fileMeta?.environmentId === 'string' ? fileMeta.environmentId.trim() : '';
+  const envNameFromEnv = process.env.RAILWAY_ENVIRONMENT_NAME?.trim();
+  const envNameFromFile = typeof fileMeta?.environmentName === 'string' ? fileMeta.environmentName : undefined;
+  const env = pickEnvironment(proj.environments.edges, {
+    id: envIdFromEnv || envIdFromFile || undefined,
+    name: envNameFromEnv ?? envNameFromFile,
+  });
 
   if (argFlag('--list')) {
     console.log(`Project: ${proj.name} (${proj.id})`);
@@ -170,7 +203,11 @@ async function main() {
   const dry = argFlag('--dry-run');
   const doDeploy = argFlag('--deploy');
 
-  console.log(`Project ${proj.name} | env ${env.name} | repo ${cfg.githubRepo}@${cfg.branch}`);
+  const activeEnv = cfg.environmentId?.trim()
+    ? pickEnvironment(proj.environments.edges, { id: cfg.environmentId.trim() })
+    : env;
+
+  console.log(`Project ${proj.name} | env ${activeEnv.name} | repo ${cfg.githubRepo}@${cfg.branch}`);
   if (dry) console.log('(dry-run: no mutations sent)\n');
 
   for (const row of cfg.services) {
@@ -195,7 +232,7 @@ async function main() {
       }
 
       await gql(token, M_INSTANCE, {
-        environmentId: env.id,
+        environmentId: activeEnv.id,
         serviceId: sid,
         input: {
           rootDirectory: row.rootDirectory,
@@ -208,14 +245,14 @@ async function main() {
         input: {
           enabled: true,
           projectId: proj.id,
-          environmentId: env.id,
+          environmentId: activeEnv.id,
           serviceId: sid,
         },
       });
       console.log('  serviceInstanceAutoDeployUpdate: ok');
 
       if (doDeploy) {
-        await gql(token, M_DEPLOY, { serviceId: sid, environmentId: env.id });
+        await gql(token, M_DEPLOY, { serviceId: sid, environmentId: activeEnv.id });
         console.log('  serviceInstanceDeploy(latestCommit): ok');
       }
     } else {

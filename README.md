@@ -67,7 +67,8 @@ Then you can wire **repo, branch, root directory, `railway.toml` path, and autod
 
 ```bash
 export RAILWAY_API_TOKEN="…"
-export RAILWAY_PROJECT_ID="…"   # Cmd/Ctrl+K in Railway → Copy project ID
+export RAILWAY_PROJECT_ID="…"   # optional if projectId is set in railway.deploy.config.json
+# optional: export RAILWAY_ENVIRONMENT_ID="…"  # overrides environment name matching
 # optional: export RAILWAY_ENVIRONMENT_NAME=staging   # default picks "production" or first env
 
 cd scripts && bun run railway:configure-autodeploy

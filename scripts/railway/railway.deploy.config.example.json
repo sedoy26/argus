@@ -1,5 +1,7 @@
 {
-  "_readme": "Copy to railway.deploy.config.json. Set RAILWAY_PROJECT_ID via Railway (Cmd/Ctrl+K → Copy project ID).",
+  "_readme": "Copy to railway.deploy.config.json. Optional: projectId / environmentId here so you do not need RAILWAY_PROJECT_ID / RAILWAY_ENVIRONMENT_ID env vars.",
+  "projectId": "",
+  "environmentId": "",
   "githubRepo": "YOUR_ORG/heg",
   "branch": "main",
   "environmentName": "production",
