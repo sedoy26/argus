@@ -278,7 +278,10 @@ async function handlePreview(addr: string): Promise<Response> {
 // Server
 // ---------------------------------------------------------------------------
 
+const HOST = Bun.env.HOST ?? '0.0.0.0';
+
 const server = Bun.serve({
+  hostname: HOST,
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
@@ -313,6 +316,6 @@ const server = Bun.serve({
   },
 });
 
-console.log(`[gateway] listening on http://localhost:${server.port}`);
+console.log(`[gateway] listening on http://${HOST}:${server.port}`);
 console.log(`[gateway] signal-api    ${signalApiBase}`);
 console.log(`[gateway] frontend tpl  ${FRONTEND_URL_TEMPLATE}`);

@@ -98,6 +98,8 @@ async function hardwareNonce(): Promise<{ nonce: string; source: string }> {
 }
 
 const PORT = Number(Bun.env.PORT ?? 8787);
+/** Bind all interfaces so Docker / Railway healthchecks can reach the server (not loopback-only). */
+const HOST = Bun.env.HOST ?? '0.0.0.0';
 
 // When STANDALONE=1 the server never touches the GoTEE bridge.
 // All consensus is computed in-process from submitted signals.
@@ -729,6 +731,7 @@ async function handleDemoReset(req: Request): Promise<Response> {
 registerSocialIntelRunner(runIntelCorroborationFromText);
 
 const server = Bun.serve({
+  hostname: HOST,
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
@@ -784,7 +787,7 @@ emit('boot', `Argus signal-api started (${STANDALONE ? 'standalone' : 'TEE bridg
   bridge: STANDALONE ? null : bridgeAddress,
 });
 
-console.log(`[signal-api] listening on http://localhost:${server.port}`);
+console.log(`[signal-api] listening on http://${HOST}:${server.port}`);
 console.log(`[signal-api] mode          ${STANDALONE ? 'standalone (no TEE)' : 'bridge → ' + bridgeAddress}`);
 console.log(
   `[signal-api] access allowlists  privileged=${privilegedAddresses().size} admin=${adminAddresses().size} (ARGUS_ADMIN_ADDRESSES required for admin UI; ARGUS_PRIVILEGED_ADDRESSES for scout bypass only)`,
